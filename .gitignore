@@ -1,3 +1,9 @@
+# axlib private
+.private*
+
+# PyPI configuration file
+.pypirc
+
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -8,13 +14,13 @@ wheels/
 # UV tool cache
 .ruff_cache/
 
-# C extensions
-*.so
-
 # Scratch files, testing and coverage checks
 .coverage*
 .pytest_cache/
 .cache
+
+# C extensions
+*.so
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
@@ -29,16 +35,9 @@ uv.lock
 
 # Environments
 .env
-.envrc
 .venv
 env/
 venv/
-ENV/
-env.bak/
-venv.bak/
-
-# PyPI configuration file
-.pypirc
 
 # Visual Studio Code
 #  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
