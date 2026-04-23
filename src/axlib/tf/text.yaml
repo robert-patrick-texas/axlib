@@ -1,0 +1,92 @@
+
+# Basic key-value pairs
+app:
+  name: TestApp
+  version: "1.2.3"
+  debug: true
+  port: 8080
+  timeout_seconds: 30
+  pi: 3.14159
+  empty_value: null
+
+# Lists
+servers:
+  - host: web-01.example.com
+    ip: 10.0.0.1
+    roles: [web, api]
+  - host: web-02.example.com
+    ip: 10.0.0.2
+    roles:
+      - web
+      - worker
+
+# Nested structures
+database:
+  engine: postgres
+  host: db.example.com
+  port: 5432
+  credentials:
+    user: dbuser
+    password: "p@ss:word#with;chars"
+  options:
+    pool_size: 20
+    ssl: true
+
+# Multiline strings
+messages:
+  short: "Single line message"
+  folded: >
+    This is a folded
+    multiline string where
+    newlines become spaces.
+  literal: |
+    This is a literal block.
+    Newlines are preserved.
+    Indentation matters.
+
+# Anchors and aliases
+defaults: &defaults
+  retries: 3
+  backoff: 2s
+  enabled: true
+
+service_a:
+  <<: *defaults
+  endpoint: /api/a
+
+service_b:
+  <<: *defaults
+  endpoint: /api/b
+  retries: 5
+
+# Environment-style values
+env:
+  PATH: "/usr/local/bin:/usr/bin:/bin"
+  HOME: "/home/test"
+  FEATURE_FLAG_X: "false"
+
+# Mixed types and edge cases
+edge_cases:
+  numeric_strings:
+    - "00123"
+    - "1e5"
+  booleans:
+    - true
+    - false
+    - "true"   # string, not boolean
+  special_chars: "!@#$%^&*()_+-=[]{}|;:',.<>/?"
+  urls:
+    - http://example.com
+    - https://example.com/path?query=1#fragment
+
+
+# Inline map and list
+inline:
+  map: { key1: value1, key2: value2 }
+  list: [1, 2, 3, 4]
+
+# Comments and spacing edge cases
+comment_examples:
+  key: value # inline comment
+  another: "value # not a comment inside quotes"
+

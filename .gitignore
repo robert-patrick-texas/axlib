@@ -31,7 +31,7 @@ wheels/
 #   It is generally recommended to include uv.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility.
 #   Often not included for libraries.
-uv.lock
+#uv.lock
 
 # Environments
 .env

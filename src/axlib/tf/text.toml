@@ -1,0 +1,73 @@
+# Basic key-value pairs
+app_name = "TestApp"
+version = "1.2.3"
+debug = true
+port = 8080
+pi = 3.14159
+empty_value = ""
+
+# Dates and times
+created_at = 2025-01-15T12:34:56Z
+local_date = 2025-01-15
+local_time = 12:34:56
+
+# Arrays
+numbers = [1, 2, 3, 4]
+strings = ["alpha", "beta", "gamma"]
+mixed_strings = ["00123", "1e5", "true"]
+
+# Multiline strings
+multiline_basic = """
+This is a multiline string.
+Newlines are preserved.
+Indentation is kept.
+"""
+
+multiline_literal = '''
+Literal multiline string.
+Backslashes \ are not escaped.
+Quotes " remain as-is.
+'''
+
+# Inline table
+inline_table = { key1 = "value1", key2 = 42, enabled = true }
+
+# Nested tables
+[database]
+engine = "postgres"
+host = "db.example.com"
+port = 5432
+
+[database.credentials]
+user = "dbuser"
+password = "p@ss:word#with;chars"
+
+[database.options]
+pool_size = 20
+ssl = true
+
+# Array of tables
+[[servers]]
+name = "web-01"
+ip = "10.0.0.1"
+roles = ["web", "api"]
+
+[[servers]]
+name = "web-02"
+ip = "10.0.0.2"
+roles = ["web", "worker"]
+
+# Dotted keys
+logging.level = "INFO"
+logging.format = "json"
+
+# Edge cases
+[edge_cases]
+quoted_hash = "value # not a comment"
+quoted_semicolon = "value ; not a comment"
+path = "C:\\Program Files\\App"
+url = "https://example.com/path?query=1#fragment"
+special_chars = "!@#$%^&*()_+-=[]{}|;:',.<>/?"
+
+
+fin = 1

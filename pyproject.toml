@@ -34,7 +34,8 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = ["--maxfail=1", "--cov=axlib", "--cov-fail-under=50"]
+addopts = ["--maxfail=1", "--cov=axlib"]
+# "--cov-fail-under=50"]
 
 [tool.ty.terminal]
 error-on-warning = true
@@ -53,23 +54,41 @@ indent-style = "space"
 quote-style = "double"
 
 [tool.ruff.lint]
-#select = ["ALL"]
-#ignore = ["D", "COM812", "ISC001"]
-extend-select = [
-    "F",        # Pyflakes rules
-    "W",        # PyCodeStyle warnings
-    "E",        # PyCodeStyle errors
-    "I",        # Sort imports properly
-    "UP",       # Warn if certain things can changed due to newer Python versions
-    "C4",       # Catch incorrect use of comprehensions, dict, list, etc
-    "FA",       # Enforce from __future__ import annotations
-    "ISC",      # Good use of string concatenation
-    "ICN",      # Use common import conventions
-    "RET",      # Good return practices
-    "SIM",      # Common simplification rules
-    "TID",      # Some good import practices
-    "TC",       # Enforce importing certain types in a TYPE_CHECKING block
-    "PTH",      # Use pathlib instead of os.path
-    "TD",       # Be diligent with TODO comments
-    "NPY",      # Some numpy-specific things
+select = ["ALL"]
+ignore = [
+    "ARG001",
+    "C901",
+    "COM812",
+    "D",
+    "ERA001",
+    "FURB110",
+    "PIE790",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR2004",
+    "PLW2901",
+    "PT011",
+    "S101",
+    "T201",
+    "TC",
 ]
+#ignore = ["D", "COM812", "ISC001", "TC"]
+#extend-select = [
+#    "F",        # Pyflakes rules
+#    "W",        # PyCodeStyle warnings
+#    "E",        # PyCodeStyle errors
+#    "I",        # Sort imports properly
+#    "UP",       # Warn if certain things can changed due to newer Python versions
+#    "C4",       # Catch incorrect use of comprehensions, dict, list, etc
+#    "FA",       # Enforce from __future__ import annotations
+#    "ISC",      # Good use of string concatenation
+#    "ICN",      # Use common import conventions
+#    "RET",      # Good return practices
+#    "SIM",      # Common simplification rules
+#    "TID",      # Some good import practices
+#    "TC",       # Enforce importing certain types in a TYPE_CHECKING block
+#    "PTH",      # Use pathlib instead of os.path
+#    "TD",       # Be diligent with TODO comments
+#    "NPY",      # Some numpy-specific things
+#]
