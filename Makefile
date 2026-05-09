@@ -8,8 +8,10 @@ format:
 
 lint:
 	ruff format --check && ruff check && ty check src/
+
 test:
 	uv run pytest
+
 check: lint test
 
 clean:

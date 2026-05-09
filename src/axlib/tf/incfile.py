@@ -258,7 +258,7 @@ def _expand_includes_internal(
         # Max depth enforcement.
         # current_depth counts how deep we already are.
         # If current_depth == max_depth, do not recurse into another file.
-        if current_depth >= max_depth:
+        if current_depth > max_depth:
             output_parts.append(line)
             continue
 

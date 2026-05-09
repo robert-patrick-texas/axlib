@@ -11,7 +11,8 @@ def remove_triple_quoted(text: str) -> str:
     # (?<!\\)\1       : Match the same triple quote type that started it,
     #                   ensuring it isn't preceded by an escape backslash.
     # flags=re.DOTALL : Ensures the '.' matches newline characters.
-    pattern = r"(\'\'\'|\"\"\")(.*?)(?<!\\)\1"
+    ###pattern = r"(\'\'\'|\"\"\")(.*?)(?<!\\)\1"
+    pattern = r"(\'\'\'|\"\"\")((?:[^\\]|\\.)*?)\1"
 
     # First pass: collapse multiline triple-quoted blocks into a single line
     # so the per-line logic can match and remove them cleanly.
