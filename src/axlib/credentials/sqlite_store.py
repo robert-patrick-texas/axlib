@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Encrypted SQLite credential storage for Network Operations automation.
 
 This module adds a local, serverless credential backend for operators who need
@@ -55,8 +58,8 @@ try:
     import grp
     import pwd
 except ImportError:  # pragma: no cover - POSIX ownership is a Linux feature.
-    grp = None  # type: ignore[assignment]
-    pwd = None  # type: ignore[assignment]
+    grp = None  # ty: ignore[invalid-assignment]
+    pwd = None
 
 from .exceptions import (
     CredentialBackendError,
@@ -342,7 +345,11 @@ def _protect_regular_file(
                 follow_symlinks=False,
             )
         if stat.S_IMODE(current.st_mode) != mode:
-            os.chmod(path, mode, follow_symlinks=False)
+            # Path.chmod() only gained follow_symlinks in Python 3.13; this
+            # project supports 3.11+, and follow_symlinks=False here is a
+            # deliberate guard against a symlink swapped in after the lstat()
+            # check above, so os.chmod() must stay.
+            os.chmod(path, mode, follow_symlinks=False)  # noqa: PTH101
         verified = path.lstat()
     except OSError as exc:
         raise CredentialBackendError(
@@ -401,7 +408,7 @@ def _prepare_parent_directory(
         gid = _resolve_group_id(group)
         if uid is not None or gid is not None:
             os.chown(parent, -1 if uid is None else uid, -1 if gid is None else gid)
-        os.chmod(parent, mode)
+        parent.chmod(mode)
     except (CredentialConfigurationError, CredentialBackendError):
         raise
     except OSError as exc:
@@ -571,7 +578,7 @@ def _write_key_file_atomic(
             enforce=True,
             label="new SQLite encryption key",
         )
-        os.replace(temp_path, path)
+        temp_path.replace(path)
         temp_path = None
     except (CredentialConfigurationError, CredentialBackendError):
         raise
@@ -928,8 +935,7 @@ class SQLiteCredentialStore:
             raise
         except Exception as exc:
             raise CredentialBackendError(
-                f"Unable to encrypt SQLite credentials for service {service!r}: "
-                f"{exc}"
+                f"Unable to encrypt SQLite credentials for service {service!r}: {exc}"
             ) from exc
 
     def _decrypt_values(
@@ -975,8 +981,7 @@ class SQLiteCredentialStore:
             ) from exc
         except Exception as exc:
             raise CredentialBackendError(
-                f"Unable to decrypt SQLite credentials for service {service!r}: "
-                f"{exc}"
+                f"Unable to decrypt SQLite credentials for service {service!r}: {exc}"
             ) from exc
 
         if not isinstance(decoded, dict) or not all(
@@ -1044,9 +1049,7 @@ class SQLiteCredentialStore:
             application_id = int(
                 connection.execute("PRAGMA application_id").fetchone()[0]
             )
-            user_version = int(
-                connection.execute("PRAGMA user_version").fetchone()[0]
-            )
+            user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
             if application_id != APPLICATION_ID:
                 raise CredentialBackendError(
                     "Selected SQLite file is not an axlib credential database."
@@ -1146,7 +1149,9 @@ class SQLiteCredentialStore:
             )
 
         try:
-            with self._connect(read_only=False, allow_create=created_file) as connection:
+            with self._connect(
+                read_only=False, allow_create=created_file
+            ) as connection:
                 connection.execute("PRAGMA journal_mode = DELETE")
                 if not created_file:
                     # Verification-only behavior is intentional. A schema from an
@@ -1724,7 +1729,7 @@ class SQLiteCredentialStore:
             ) from exc
 
         try:
-            os.replace(staged_key_path, key_file)
+            staged_key_path.replace(key_file)
             self._protect_key_file(key_file, new_file=True)
         except OSError as exc:
             raise CredentialBackendError(

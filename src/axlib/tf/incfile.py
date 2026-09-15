@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Expand include directives in network templates and configuration fragments.
 
 Large network templates are easier to maintain when common sections live in

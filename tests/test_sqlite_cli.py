@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Command-line lifecycle tests for the encrypted SQLite store."""
 
 from __future__ import annotations

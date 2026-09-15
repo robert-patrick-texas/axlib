@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for the introductory arithmetic teaching module."""
 
 import pytest

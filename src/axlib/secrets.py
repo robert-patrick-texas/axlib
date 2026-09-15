@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Backwards-compatible credential helpers for network automation scripts.
 
 This module preserves the established axlib API used by operator scripts::
@@ -10,10 +13,10 @@ looks up the current operator from ``$USER``.  Environment variables override
 stored values, Redis may supply cached fields, an AES-256-GCM SQLite database is
 preferred when enabled, and the axlib-native AES-256-GCM encrypted text file is
 used as the lower-priority durable store when enabled. If the operator record
-lacks a network username or password, the function retains the historical fallback to a *configured*
-shared service account.  The shared service is selected with
-``AXLIB_SHARED_SERVICE`` or ``credentials.shared_service`` rather than being
-hard-coded in source.
+lacks a network username or password, the function retains the historical
+fallback to a *configured* shared service account.  The shared service is
+selected with ``AXLIB_SHARED_SERVICE`` or ``credentials.shared_service``
+rather than being hard-coded in source.
 
 Dependencies:
     ``cryptography`` for AES-256-GCM durable stores and ``redis`` only when
@@ -40,7 +43,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from typing import TextIO
 
-import axlib.config as config
+from axlib import config
 from axlib.credentials.manager import (
     lookup_values,
     merge_missing,

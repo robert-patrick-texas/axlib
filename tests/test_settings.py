@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for external credential configuration and Redis TLS settings."""
 
 from __future__ import annotations
@@ -6,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
+import axlib.config as legacy_config
 from axlib.credentials.exceptions import CredentialConfigurationError
 from axlib.credentials.providers import RedisCredentialCache
 from axlib.credentials.settings import load_settings, parse_boolean, parse_file_mode
-import axlib.config as legacy_config
 
 
 def test_toml_and_environment_precedence(tmp_path: Path) -> None:
@@ -54,7 +57,7 @@ key_prefix = "team:credentials"
     assert settings.redis_enabled is True
     assert settings.redis_host == "redis.env.example"
     assert settings.redis_tls is True
-    assert settings.redis_password == "runtime-password"
+    assert settings.redis_password == "runtime-password"  # noqa: S105
     assert settings.redis_cache_ttl == 300
     assert settings.redis_key_prefix == "team:credentials"
 
@@ -70,14 +73,14 @@ def test_redis_tls_options_are_passed_to_client() -> None:
             "AXLIB_REDIS_PASSWORD": "secret",
         }
     )
-    options = RedisCredentialCache(settings)._client_options()
+    options = RedisCredentialCache(settings)._client_options()  # noqa: SLF001
     assert options["ssl"] is True
     assert options["ssl_cert_reqs"] == "required"
     assert options["ssl_ca_certs"] == "/ca.pem"
     assert options["ssl_certfile"] == "/client.pem"
     assert options["ssl_keyfile"] == "/client.key"
     assert options["username"] == "acl-user"
-    assert options["password"] == "secret"
+    assert options["password"] == "secret"  # noqa: S105
 
 
 @pytest.mark.parametrize(
@@ -98,7 +101,9 @@ def test_selected_missing_toml_is_an_error(tmp_path: Path) -> None:
         load_settings(tmp_path / "missing.toml", environ={})
 
 
-def test_invalid_legacy_config_value_uses_credential_error(monkeypatch) -> None:
+def test_invalid_legacy_config_value_uses_credential_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(legacy_config, "redis_port", "not-a-port")
     with pytest.raises(CredentialConfigurationError):
         legacy_config.as_settings()

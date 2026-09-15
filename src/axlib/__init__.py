@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Educational helpers for Python-based network automation.
 
 Axlib combines streaming text filters with credential lookup utilities designed

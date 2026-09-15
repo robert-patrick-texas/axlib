@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Optional Redis credential cache for Network Operations automation.
 
 Durable credential storage now lives in :mod:`axlib.credentials.file_store` and
@@ -21,8 +24,9 @@ Example:
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from types import ModuleType
-from typing import Any, Mapping, Sequence
+from typing import Any, Self
 
 from .exceptions import (
     CredentialBackendError,
@@ -110,14 +114,14 @@ class RedisCredentialCache:
                 options["ssl_keyfile"] = str(self.settings.redis_keyfile)
         return options
 
-    def __enter__(self) -> RedisCredentialCache:
+    def __enter__(self) -> Self:
         """Create the Redis client for use inside a ``with`` statement.
 
         Args:
             None: Provider settings supply all connection options.
 
         Returns:
-            RedisCredentialCache: This connected cache provider.
+            Self: This connected cache provider.
 
         Raises:
             CredentialDependencyError: If redis-py is not installed.
@@ -139,7 +143,7 @@ class RedisCredentialCache:
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        traceback: object | None,
+        traceback: object,
     ) -> bool:
         """Close the Redis client regardless of success or failure.
 
@@ -147,7 +151,7 @@ class RedisCredentialCache:
             exc_type (type[BaseException] | None): Exception class from the
                 managed block, when one occurred.
             exc (BaseException | None): Exception instance from the managed block.
-            traceback (object | None): Traceback supplied by Python's context
+            traceback (object): Traceback supplied by Python's context
                 manager protocol.
 
         Returns:
@@ -177,7 +181,7 @@ class RedisCredentialCache:
             return
         try:
             self._client.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             # Redis close errors are not actionable after a lookup and should not
             # obscure a more useful connection or decryption error.
             pass
@@ -271,8 +275,7 @@ class RedisCredentialCache:
                 client.delete(key)
         except Exception as exc:
             raise CredentialBackendError(
-                f"Unable to invalidate Redis credentials for service {service!r}: "
-                f"{exc}"
+                f"Unable to invalidate Redis credentials for service {service!r}: {exc}"
             ) from exc
 
     def write(self, service: str, values: Mapping[str, str]) -> None:

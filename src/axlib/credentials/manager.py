@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Coordinate credential precedence across overrides, cache, and stores.
 
 A network script may receive some values from environment variables, find other
@@ -26,13 +29,13 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from contextlib import ExitStack
-from typing import Protocol, TextIO
+from typing import Protocol, Self, TextIO
 
 from .exceptions import CredentialError
 from .file_store import CredentialFileStore
 from .providers import RedisCredentialCache
-from .sqlite_store import SQLiteCredentialStore
 from .settings import CredentialSettings
+from .sqlite_store import SQLiteCredentialStore
 
 Reporter = Callable[[str], None]
 
@@ -40,14 +43,14 @@ Reporter = Callable[[str], None]
 class CacheProvider(Protocol):
     """Structural interface used by the manager and lightweight test doubles."""
 
-    def __enter__(self) -> CacheProvider:
+    def __enter__(self) -> Self:
         """Enter the cache context.
 
         Args:
             None: Implementations use their own settings.
 
         Returns:
-            CacheProvider: Active provider.
+            Self: Active provider.
 
         Raises:
             CredentialError: If the cache cannot be opened.
@@ -58,14 +61,14 @@ class CacheProvider(Protocol):
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        traceback: object | None,
+        traceback: object,
     ) -> bool:
         """Exit the cache context and release resources.
 
         Args:
             exc_type (type[BaseException] | None): Managed exception class.
             exc (BaseException | None): Managed exception instance.
-            traceback (object | None): Managed traceback.
+            traceback (object): Managed traceback.
 
         Returns:
             bool: Whether the implementation suppresses an exception.

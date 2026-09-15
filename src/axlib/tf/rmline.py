@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Trim line edges and control blank lines in network-oriented text.
 
 Configuration snippets copied from tickets, spreadsheets, or terminals often
@@ -109,9 +112,7 @@ def _stripper_for_mode(mode: str) -> Callable[[str], str]:
     try:
         return functions[mode]
     except KeyError as exc:
-        raise ValueError(
-            "mode must be one of: 'both', 'leading', 'trailing'"
-        ) from exc
+        raise ValueError("mode must be one of: 'both', 'leading', 'trailing'") from exc
 
 
 def normalize_text(
@@ -148,9 +149,7 @@ def normalize_text(
 
     for raw_line in lines:
         content, ending = (
-            _split_line_ending(raw_line)
-            if preserve_line_endings
-            else (raw_line, "")
+            _split_line_ending(raw_line) if preserve_line_endings else (raw_line, "")
         )
         processed = strip_line(content)
         original_blank = content == ""
@@ -159,9 +158,7 @@ def normalize_text(
 
         if processed_blank:
             keep_blank = (
-                mode == "both"
-                and keep_original_blank_lines
-                and original_blank
+                mode == "both" and keep_original_blank_lines and original_blank
             ) or collapse_blank_lines
 
         if processed_blank and not keep_blank:

@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """AES-256-GCM encrypted text-file credential storage for Network Operations.
 
 This module provides axlib's native text credential store.  It is intended for
@@ -54,7 +57,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 try:
     import fcntl
@@ -65,8 +68,8 @@ try:
     import grp
     import pwd
 except ImportError:  # pragma: no cover - POSIX ownership is a Linux feature.
-    grp = None  # type: ignore[assignment]
-    pwd = None  # type: ignore[assignment]
+    grp = None  # ty: ignore[invalid-assignment]
+    pwd = None
 
 from .exceptions import (
     CredentialBackendError,
@@ -205,9 +208,7 @@ def _decode_key_text(value: str, *, source: str) -> bytes:
             f"Credential-file encryption key is empty: {source}"
         )
     try:
-        key = base64.b64decode(
-            text.encode("ascii"), altchars=b"-_", validate=True
-        )
+        key = base64.b64decode(text.encode("ascii"), altchars=b"-_", validate=True)
     except (UnicodeEncodeError, binascii.Error, ValueError) as exc:
         raise CredentialConfigurationError(
             f"Credential-file encryption key from {source} is not valid "
@@ -336,7 +337,9 @@ def _protect_regular_file(
     try:
         info = path.lstat()
     except OSError as exc:
-        raise CredentialBackendError(f"Unable to inspect {label} {path}: {exc}") from exc
+        raise CredentialBackendError(
+            f"Unable to inspect {label} {path}: {exc}"
+        ) from exc
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
         raise CredentialBackendError(f"{label} is not a regular file: {path}")
 
@@ -345,7 +348,11 @@ def _protect_regular_file(
     current_mode = stat.S_IMODE(info.st_mode)
     try:
         if enforce and current_mode != mode:
-            os.chmod(path, mode, follow_symlinks=False)
+            # Path.chmod() only gained follow_symlinks in Python 3.13; this
+            # project supports 3.11+, and follow_symlinks=False here is a
+            # deliberate guard against a symlink swapped in after the lstat()
+            # check above, so os.chmod() must stay.
+            os.chmod(path, mode, follow_symlinks=False)  # noqa: PTH101
         uid = expected_uid if expected_uid is not None else info.st_uid
         gid = expected_gid if expected_gid is not None else info.st_gid
         if enforce and (uid != info.st_uid or gid != info.st_gid):
@@ -390,7 +397,7 @@ def _prepare_parent_directory(
         return
     try:
         parent.mkdir(parents=True, mode=mode)
-        os.chmod(parent, mode)
+        parent.chmod(mode)
         uid = _resolve_owner_id(owner)
         gid = _resolve_group_id(group)
         if uid is not None or gid is not None:
@@ -472,7 +479,7 @@ def _write_key_file_atomic(
             enforce=True,
             label="new credential-file encryption key",
         )
-        os.replace(temp_path, path)
+        temp_path.replace(path)
         temp_path = None
     except (CredentialConfigurationError, CredentialBackendError):
         raise
@@ -764,9 +771,7 @@ class CredentialFileStore:
                 "Credential-file write requires at least one field."
             )
         if not all(
-            isinstance(field, str)
-            and bool(field)
-            and isinstance(value, str)
+            isinstance(field, str) and bool(field) and isinstance(value, str)
             for field, value in copied.items()
         ):
             raise CredentialConfigurationError(
@@ -825,10 +830,15 @@ class CredentialFileStore:
             strict=True,
             empty_lines_in_values=False,
         )
-        parser.optionxform = str
+        # The standard-library-documented way to disable ConfigParser's
+        # default option-name lowercasing; ty models optionxform as a bound
+        # method, so it flags this idiom even though configparser expects it.
+        parser.optionxform = str  # ty: ignore[invalid-assignment]
         return parser
 
-    def _encrypt_values(self, service: str, values: Mapping[str, str]) -> tuple[bytes, bytes]:
+    def _encrypt_values(
+        self, service: str, values: Mapping[str, str]
+    ) -> tuple[bytes, bytes]:
         """Serialize and encrypt one service mapping with a fresh nonce.
 
         Args:
@@ -853,7 +863,9 @@ class CredentialFileStore:
         ciphertext = self._aesgcm().encrypt(nonce, plaintext, self._record_aad(service))
         return nonce, ciphertext
 
-    def _decrypt_values(self, service: str, nonce: bytes, ciphertext: bytes) -> dict[str, str]:
+    def _decrypt_values(
+        self, service: str, nonce: bytes, ciphertext: bytes
+    ) -> dict[str, str]:
         """Authenticate, decrypt, and validate one service payload.
 
         Args:
@@ -892,9 +904,7 @@ class CredentialFileStore:
                 f"Credential-file payload for service {service!r} is invalid."
             ) from exc
         if not isinstance(decoded, dict) or not all(
-            isinstance(field, str)
-            and bool(field)
-            and isinstance(value, str)
+            isinstance(field, str) and bool(field) and isinstance(value, str)
             for field, value in decoded.items()
         ):
             raise CredentialBackendError(
@@ -1108,7 +1118,7 @@ class CredentialFileStore:
                 enforce=True,
                 label="temporary encrypted credential file",
             )
-            os.replace(temp_path, path)
+            temp_path.replace(path)
             temp_path = None
             self._protect_data_file(path, new_file=True)
             try:
@@ -1251,7 +1261,9 @@ class CredentialFileStore:
             try:
                 flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
                 flags |= getattr(os, "O_NOFOLLOW", 0)
-                descriptor = os.open(lock_path, flags, self.settings.credential_file_mode)
+                descriptor = os.open(
+                    lock_path, flags, self.settings.credential_file_mode
+                )
                 os.close(descriptor)
                 self._protect_data_file(lock_path, new_file=True)
             except FileExistsError:
@@ -1724,7 +1736,7 @@ class CredentialFileStore:
                 raise
 
             try:
-                os.replace(staged_key_path, key_file)
+                staged_key_path.replace(key_file)
                 self._protect_key_file(key_file, new_file=True)
             except OSError as exc:
                 raise CredentialBackendError(

@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Remove triple-quoted string spans from general text.
 
 Network engineers sometimes receive Python-like templates that use triple-quoted

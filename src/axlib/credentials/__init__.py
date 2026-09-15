@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Credential settings and encrypted storage providers for axlib.
 
 Network automation scripts often need the same credential lookup behavior across

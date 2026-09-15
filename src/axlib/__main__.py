@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Top-level command dispatcher for the axlib teaching package.
 
 The package command groups text processing, credential diagnostics, AES-256-GCM

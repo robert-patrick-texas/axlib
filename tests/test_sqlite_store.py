@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for AES-256-GCM SQLite credential storage."""
 
 from __future__ import annotations
@@ -320,7 +323,9 @@ def test_sqlite_initialize_rejects_unsupported_schema_without_migration(
         connection.execute("PRAGMA user_version = 99")
         connection.commit()
 
-    with pytest.raises(CredentialBackendError, match="Unsupported SQLite credential schema"):
+    with pytest.raises(
+        CredentialBackendError, match="Unsupported SQLite credential schema"
+    ):
         store.initialize()
 
 

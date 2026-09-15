@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Collapse tabs and repeated spaces outside straight quoted regions.
 
 Network configuration templates often need predictable spacing for comparison or
@@ -89,8 +92,7 @@ def normalize_spaces_outside_quotes(text: str) -> str:
     # Processing separate lines prevents an unmatched quote in one configuration
     # line from protecting all later lines by accident.
     return "".join(
-        normalize_line_outside_quotes(line)
-        for line in text.splitlines(keepends=True)
+        normalize_line_outside_quotes(line) for line in text.splitlines(keepends=True)
     )
 
 

@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Manage axlib's AES-256-GCM encrypted text credential file.
 
 This command-line utility gives Network Operations staff explicit lifecycle
@@ -34,10 +37,7 @@ from pathlib import Path
 from typing import TextIO
 
 from .cli_common import collect_values, normalize_service_for_write
-
 from .exceptions import CredentialError
-from .providers import RedisCredentialCache
-from .settings import CredentialSettings, load_settings
 from .file_store import (
     KEY_LENGTH,
     CredentialFileRecord,
@@ -45,6 +45,8 @@ from .file_store import (
     generate_credential_file_key_file,
     read_credential_file_key,
 )
+from .providers import RedisCredentialCache
+from .settings import CredentialSettings, load_settings
 
 NETWORK_FIELDS = frozenset({"netuser", "netpass", "netenable"})
 
@@ -227,9 +229,7 @@ def _collect_network_values(
         prompt_fields,
     )
     if not values:
-        raise ValueError(
-            "Specify at least one --set, --from-env, or --prompt field."
-        )
+        raise ValueError("Specify at least one --set, --from-env, or --prompt field.")
 
     unsupported = sorted(set(values).difference(NETWORK_FIELDS))
     if unsupported:
@@ -301,12 +301,14 @@ def _initialize_store(
     *,
     generate_key: bool,
 ) -> CredentialFileStore:
-    """Optionally create the configured key file and initialize the encrypted text store.
+    """Optionally create the configured key file and initialize the encrypted
+    text store.
 
     Args:
-        settings (CredentialSettings): Encrypted text-file path and key configuration.
-        generate_key (bool): Create ``settings.credential_file_key_file`` before opening
-            the database.
+        settings (CredentialSettings): Encrypted text-file path and key
+            configuration.
+        generate_key (bool): Create ``settings.credential_file_key_file`` before
+            opening the database.
 
     Returns:
         CredentialFileStore: Initialized provider ready for CRUD operations.

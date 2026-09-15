@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Load encrypted-file, SQLite, and Redis settings without embedding secrets.
 
 Network-automation repositories are often readable by many engineers, so this
@@ -27,9 +30,10 @@ from __future__ import annotations
 
 import os
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from .exceptions import CredentialConfigurationError
 
@@ -122,6 +126,7 @@ class CredentialSettings:
     redis_cache_ttl: int = 900
     redis_key_prefix: str = ""
 
+
 def parse_boolean(value: object, *, default: bool = False) -> bool:
     """Convert a configuration value into a predictable Boolean.
 
@@ -151,9 +156,7 @@ def parse_boolean(value: object, *, default: bool = False) -> bool:
     if normalized in {"0", "false", "no", "off", "disable", "disabled"}:
         return False
 
-    raise CredentialConfigurationError(
-        f"Expected a Boolean value, received {value!r}."
-    )
+    raise CredentialConfigurationError(f"Expected a Boolean value, received {value!r}.")
 
 
 def optional_text(value: object) -> str | None:
@@ -232,14 +235,12 @@ def parse_file_mode(
         mode = value
     else:
         text = str(value).strip().casefold()
-        if text.startswith("0o"):
-            text = text[2:]
+        text = text.removeprefix("0o")
         try:
             mode = int(text, 8)
         except ValueError as exc:
             raise CredentialConfigurationError(
-                f"{name} must be an octal file mode such as '0660'; "
-                f"received {value!r}."
+                f"{name} must be an octal file mode such as '0660'; received {value!r}."
             ) from exc
 
     if not 0 <= mode <= 0o777:
@@ -312,6 +313,7 @@ def _select_value(
     env_name: str,
     table: Mapping[str, Any],
     table_name: str,
+    *,
     default: object,
 ) -> object:
     """Select one setting using environment-over-TOML precedence.
@@ -408,7 +410,10 @@ def _as_int(value: object, *, name: str) -> int:
             integer.
     """
     try:
-        return int(value)
+        # `value` is deliberately untyped raw TOML/environment input; int()
+        # rejects unsupported types at runtime and the except clause below
+        # turns that into a clear configuration error.
+        return int(value)  # ty: ignore[invalid-argument-type]
     except (TypeError, ValueError) as exc:
         raise CredentialConfigurationError(
             f"{name} must be an integer, received {value!r}."
@@ -430,7 +435,10 @@ def _as_float(value: object, *, name: str) -> float:
             number.
     """
     try:
-        return float(value)
+        # `value` is deliberately untyped raw TOML/environment input; float()
+        # rejects unsupported types at runtime and the except clause below
+        # turns that into a clear configuration error.
+        return float(value)  # ty: ignore[invalid-argument-type]
     except (TypeError, ValueError) as exc:
         raise CredentialConfigurationError(
             f"{name} must be a number, received {value!r}."
@@ -570,7 +578,7 @@ def load_settings(
                 "AXLIB_SHARED_SERVICE",
                 credential_table,
                 "shared_service",
-                None,
+                default=None,
             )
         ),
         credential_file_enabled=parse_boolean(
@@ -579,7 +587,7 @@ def load_settings(
                 "AXLIB_CREDENTIAL_FILE_ENABLE",
                 credential_file_table,
                 "enabled",
-                False,
+                default=False,
             )
         ),
         credential_file=_select_path(
@@ -592,9 +600,7 @@ def load_settings(
         ),
         # Direct AES keys are environment-only. Reusable TOML may point at a
         # protected key file but should not contain secret key material.
-        credential_file_key=optional_text(
-            environment.get("AXLIB_CREDENTIAL_FILE_KEY")
-        ),
+        credential_file_key=optional_text(environment.get("AXLIB_CREDENTIAL_FILE_KEY")),
         credential_file_key_file=_select_path(
             environment,
             "AXLIB_CREDENTIAL_FILE_KEY_FILE",
@@ -609,7 +615,7 @@ def load_settings(
                 "AXLIB_CREDENTIAL_FILE_LOCK_TIMEOUT",
                 credential_file_table,
                 "lock_timeout",
-                5.0,
+                default=5.0,
             ),
             name="Credential-file lock timeout",
         ),
@@ -619,7 +625,7 @@ def load_settings(
                 "AXLIB_CREDENTIAL_FILE_MODE",
                 credential_file_table,
                 "file_mode",
-                "0660",
+                default="0660",
             ),
             name="Credential-file mode",
             default=0o660,
@@ -631,7 +637,7 @@ def load_settings(
                 "AXLIB_CREDENTIAL_FILE_KEY_FILE_MODE",
                 credential_file_table,
                 "key_file_mode",
-                "0640",
+                default="0640",
             ),
             name="Credential-file key-file mode",
             default=0o640,
@@ -643,7 +649,7 @@ def load_settings(
                 "AXLIB_CREDENTIAL_FILE_OWNER",
                 credential_file_table,
                 "owner",
-                None,
+                default=None,
             )
         ),
         credential_file_group=optional_text(
@@ -652,7 +658,7 @@ def load_settings(
                 "AXLIB_CREDENTIAL_FILE_GROUP",
                 credential_file_table,
                 "group",
-                "netops",
+                default="netops",
             )
         ),
         credential_file_enforce_permissions=parse_boolean(
@@ -661,7 +667,7 @@ def load_settings(
                 "AXLIB_CREDENTIAL_FILE_ENFORCE_PERMISSIONS",
                 credential_file_table,
                 "enforce_permissions",
-                True,
+                default=True,
             ),
             default=True,
         ),
@@ -671,7 +677,7 @@ def load_settings(
                 "AXLIB_SQLITE_ENABLE",
                 sqlite_table,
                 "enabled",
-                False,
+                default=False,
             )
         ),
         sqlite_database=_select_path(
@@ -699,7 +705,7 @@ def load_settings(
                 "AXLIB_SQLITE_TIMEOUT",
                 sqlite_table,
                 "timeout",
-                5.0,
+                default=5.0,
             ),
             name="SQLite lock timeout",
         ),
@@ -709,7 +715,7 @@ def load_settings(
                 "AXLIB_SQLITE_DATABASE_MODE",
                 sqlite_table,
                 "database_mode",
-                "0660",
+                default="0660",
             ),
             name="SQLite database mode",
             default=0o660,
@@ -721,7 +727,7 @@ def load_settings(
                 "AXLIB_SQLITE_KEY_FILE_MODE",
                 sqlite_table,
                 "key_file_mode",
-                "0640",
+                default="0640",
             ),
             name="SQLite key-file mode",
             default=0o640,
@@ -733,7 +739,7 @@ def load_settings(
                 "AXLIB_SQLITE_OWNER",
                 sqlite_table,
                 "owner",
-                None,
+                default=None,
             )
         ),
         sqlite_group=optional_text(
@@ -742,7 +748,7 @@ def load_settings(
                 "AXLIB_SQLITE_GROUP",
                 sqlite_table,
                 "group",
-                "netops",
+                default="netops",
             )
         ),
         sqlite_enforce_permissions=parse_boolean(
@@ -751,7 +757,7 @@ def load_settings(
                 "AXLIB_SQLITE_ENFORCE_PERMISSIONS",
                 sqlite_table,
                 "enforce_permissions",
-                True,
+                default=True,
             ),
             default=True,
         ),
@@ -761,7 +767,7 @@ def load_settings(
                 "AXLIB_REDIS_ENABLE",
                 redis_table,
                 "enabled",
-                False,
+                default=False,
             )
         ),
         redis_host=str(
@@ -770,7 +776,7 @@ def load_settings(
                 "AXLIB_REDIS_HOST",
                 redis_table,
                 "host",
-                "localhost",
+                default="localhost",
             )
         ).strip(),
         redis_port=_as_int(
@@ -779,7 +785,7 @@ def load_settings(
                 "AXLIB_REDIS_PORT",
                 redis_table,
                 "port",
-                6379,
+                default=6379,
             ),
             name="Redis port",
         ),
@@ -789,7 +795,7 @@ def load_settings(
                 "AXLIB_REDIS_DB",
                 redis_table,
                 "db",
-                15,
+                default=15,
             ),
             name="Redis database",
         ),
@@ -799,7 +805,7 @@ def load_settings(
                 "AXLIB_REDIS_USERNAME",
                 redis_table,
                 "username",
-                None,
+                default=None,
             )
         ),
         # Like AES credential keys, a Redis password is accepted only from the
@@ -811,7 +817,7 @@ def load_settings(
                 "AXLIB_REDIS_TLS",
                 redis_table,
                 "tls",
-                False,
+                default=False,
             )
         ),
         redis_ca_certs=optional_path(
@@ -820,7 +826,7 @@ def load_settings(
                 "AXLIB_REDIS_CA_CERTS",
                 redis_table,
                 "ca_certs",
-                None,
+                default=None,
             )
         ),
         redis_certfile=optional_path(
@@ -829,7 +835,7 @@ def load_settings(
                 "AXLIB_REDIS_CERTFILE",
                 redis_table,
                 "certfile",
-                None,
+                default=None,
             )
         ),
         redis_keyfile=optional_path(
@@ -838,7 +844,7 @@ def load_settings(
                 "AXLIB_REDIS_KEYFILE",
                 redis_table,
                 "keyfile",
-                None,
+                default=None,
             )
         ),
         redis_cert_reqs=str(
@@ -847,16 +853,18 @@ def load_settings(
                 "AXLIB_REDIS_CERT_REQS",
                 redis_table,
                 "cert_reqs",
-                "required",
+                default="required",
             )
-        ).strip().casefold(),
+        )
+        .strip()
+        .casefold(),
         redis_connect_timeout=_as_float(
             _select_value(
                 environment,
                 "AXLIB_REDIS_CONNECT_TIMEOUT",
                 redis_table,
                 "connect_timeout",
-                2.0,
+                default=2.0,
             ),
             name="Redis connect timeout",
         ),
@@ -866,7 +874,7 @@ def load_settings(
                 "AXLIB_REDIS_SOCKET_TIMEOUT",
                 redis_table,
                 "socket_timeout",
-                2.0,
+                default=2.0,
             ),
             name="Redis socket timeout",
         ),
@@ -876,7 +884,7 @@ def load_settings(
                 "AXLIB_REDIS_CACHE_TTL",
                 redis_table,
                 "cache_ttl",
-                900,
+                default=900,
             ),
             name="Redis cache TTL",
         ),
@@ -886,8 +894,10 @@ def load_settings(
                 "AXLIB_REDIS_KEY_PREFIX",
                 redis_table,
                 "key_prefix",
-                "",
+                default="",
             )
-        ).strip().strip(":"),
+        )
+        .strip()
+        .strip(":"),
     )
     return validate_settings(settings)

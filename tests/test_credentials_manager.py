@@ -1,8 +1,14 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for credential precedence and resource cleanup."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import Self
+
+import pytest
 
 from axlib.credentials.exceptions import CredentialBackendError
 from axlib.credentials.manager import (
@@ -37,13 +43,18 @@ class FakeCache:
         self.read_calls: list[tuple[str, tuple[str, ...]]] = []
         self.writes: list[tuple[str, dict[str, str]]] = []
 
-    def __enter__(self) -> FakeCache:
+    def __enter__(self) -> Self:
         if self.fail_on_enter:
             raise CredentialBackendError("cache down")
         self.entered = True
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: object,
+    ) -> bool:
         self.exited = True
         return False
 
@@ -100,7 +111,8 @@ def test_cache_failure_falls_back_to_store() -> None:
 
     assert result == {"secret": "from-file"}
     assert store.calls == [("service", ("secret",))]
-    assert warnings and "cache down" in warnings[0]
+    assert warnings
+    assert "cache down" in warnings[0]
 
 
 def test_merge_missing_preserves_higher_priority_values() -> None:
@@ -114,7 +126,9 @@ def test_legacy_service_normalization_is_retained() -> None:
     assert normalize_legacy_service_name("first.last-name_ops") == "firstlastnameops"
 
 
-def test_default_chain_prefers_sqlite_before_credential_file(monkeypatch) -> None:
+def test_default_chain_prefers_sqlite_before_credential_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     events: list[tuple[str, tuple[str, ...]]] = []
 
     class FakeSQLiteStore:
@@ -159,7 +173,9 @@ def test_default_chain_prefers_sqlite_before_credential_file(monkeypatch) -> Non
     ]
 
 
-def test_sqlite_failure_still_falls_back_to_credential_file(monkeypatch) -> None:
+def test_sqlite_failure_still_falls_back_to_credential_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     warnings: list[str] = []
 
     class FailingSQLiteStore:
@@ -193,4 +209,5 @@ def test_sqlite_failure_still_falls_back_to_credential_file(monkeypatch) -> None
     )
 
     assert result == {"secret": "file-value"}
-    assert warnings and "SQLite credential lookup failed" in warnings[0]
+    assert warnings
+    assert "SQLite credential lookup failed" in warnings[0]

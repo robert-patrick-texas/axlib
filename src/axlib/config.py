@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Backwards-compatible credential configuration facade.
 
 Older axlib scripts import module attributes such as ``redis_host`` and
@@ -25,8 +28,8 @@ Example:
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from .credentials.exceptions import CredentialConfigurationError
 from .credentials.settings import (

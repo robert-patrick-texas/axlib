@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared command-line input and output helpers for axlib text filters.
 
 All text-filter commands accept the same positional input path, ``-o/--output``
@@ -106,7 +109,9 @@ def read_text(source: str, *, encoding: str) -> str:
     """
     if source == "-":
         stream = _stdin_buffer()
-        data = stream.read()
+        # `stream` is BinaryIO in normal execution or a duck-typed test double
+        # (e.g. io.StringIO) with `.read()`; `object` can't express that.
+        data = stream.read()  # ty: ignore[unresolved-attribute]
     else:
         # Binary mode prevents Python from silently converting device-config
         # line endings before a filter can honor --preserve-line-endings.
@@ -140,11 +145,14 @@ def write_text(destination: str, text: str, *, encoding: str) -> None:
                 stream.write(text)
             else:
                 try:
-                    stream.write(text.encode(encoding))
+                    # `stream` is BinaryIO in normal execution or a duck-typed
+                    # test double with `.write()`; `object` can't express
+                    # that, and the except below handles the text-stream case.
+                    stream.write(text.encode(encoding))  # ty: ignore[call-non-callable]
                 except TypeError:
                     # StringIO and similar teaching/test streams accept text,
                     # while normal stdout buffers accept bytes.
-                    stream.write(text)
+                    stream.write(text)  # ty: ignore[call-non-callable]
         return
 
     output_path = Path(destination)

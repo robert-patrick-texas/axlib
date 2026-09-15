@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Unified command dispatcher for axlib text filters.
 
 Running ``python -m axlib.tf`` exposes consistent, descriptive command names for

@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Small arithmetic examples used to teach functions, typing, and tests.
 
 These functions are intentionally simple and are not specific to a network

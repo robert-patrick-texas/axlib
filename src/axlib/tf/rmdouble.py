@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Remove full lines whose first non-whitespace characters are ``//``.
 
 Some network template formats and inventory exports use C-style ``//`` lines

@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared command-line helpers for axlib credential-store administration.
 
 Both ``axlib credential-file`` and ``axlib credential-db`` intentionally expose
@@ -101,9 +104,7 @@ def parse_assignment(assignment: str) -> tuple[str, str]:
         ValueError: If the assignment lacks ``=`` or has an invalid field name.
     """
     if "=" not in assignment:
-        raise ValueError(
-            f"Invalid assignment {assignment!r}; expected FIELD=VALUE."
-        )
+        raise ValueError(f"Invalid assignment {assignment!r}; expected FIELD=VALUE.")
     field, value = assignment.split("=", 1)
     return validate_field_name(field), value
 

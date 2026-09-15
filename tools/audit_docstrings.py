@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Audit axlib source modules for the project's educational docstring contract.
 
 Network engineers use this repository as learning material, so automated checks
@@ -84,11 +87,11 @@ def audit_file(path: Path) -> list[str]:
         if docstring is None:
             problems.append(f"{path}:{node.lineno}: {node.name} missing docstring")
             continue
-        for section in REQUIRED_SECTIONS:
-            if section not in docstring:
-                problems.append(
-                    f"{path}:{node.lineno}: {node.name} missing {section} section"
-                )
+        problems.extend(
+            f"{path}:{node.lineno}: {node.name} missing {section} section"
+            for section in REQUIRED_SECTIONS
+            if section not in docstring
+        )
     return problems
 
 

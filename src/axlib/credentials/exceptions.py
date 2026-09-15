@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Exceptions raised by :mod:`axlib.credentials`.
 
 The credential helpers are used by network-automation scripts before they open
@@ -13,7 +16,8 @@ Example:
     >>> raise CredentialConfigurationError("missing credential-store path")
     Traceback (most recent call last):
     ...
-    axlib.credentials.exceptions.CredentialConfigurationError: missing credential-store path
+    axlib.credentials.exceptions.CredentialConfigurationError: missing
+    credential-store path
 """
 
 

@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for axlib's AES-256-GCM encrypted text credential store."""
 
 from __future__ import annotations
@@ -99,7 +102,7 @@ def test_file_store_unsupported_version_is_not_migrated(tmp_path: Path) -> None:
     assert path is not None
     text = path.read_text(encoding="utf-8").replace("version = 1", "version = 99")
     path.write_text(text, encoding="utf-8")
-    os.chmod(path, 0o600)
+    path.chmod(0o600)
     with pytest.raises(CredentialBackendError, match="No automatic migration"):
         store.initialize()
 

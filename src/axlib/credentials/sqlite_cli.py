@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Manage axlib's AES-256-GCM encrypted SQLite credential database.
 
 This command-line utility gives Network Operations staff explicit lifecycle
@@ -34,7 +37,6 @@ from pathlib import Path
 from typing import TextIO
 
 from .cli_common import collect_values, normalize_service_for_write
-
 from .exceptions import CredentialError
 from .providers import RedisCredentialCache
 from .settings import CredentialSettings, load_settings
@@ -227,9 +229,7 @@ def _collect_network_values(
         prompt_fields,
     )
     if not values:
-        raise ValueError(
-            "Specify at least one --set, --from-env, or --prompt field."
-        )
+        raise ValueError("Specify at least one --set, --from-env, or --prompt field.")
 
     unsupported = sorted(set(values).difference(NETWORK_FIELDS))
     if unsupported:
@@ -323,8 +323,7 @@ def _initialize_store(
             )
         if settings.sqlite_key_file is None:
             raise CredentialError(
-                "--generate-key requires sqlite.key_file or "
-                "AXLIB_SQLITE_KEY_FILE."
+                "--generate-key requires sqlite.key_file or AXLIB_SQLITE_KEY_FILE."
             )
         generate_sqlite_key_file(
             settings.sqlite_key_file,

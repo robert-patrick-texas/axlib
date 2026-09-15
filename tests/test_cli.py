@@ -1,8 +1,13 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Command-line interface tests using temporary files."""
 
 from __future__ import annotations
 
 from pathlib import Path
+
+import pytest
 
 from axlib.__main__ import main as axlib_main
 from axlib.credentials.file_cli import main as credential_file_main
@@ -32,19 +37,19 @@ def test_unified_text_dispatcher(tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "keep\n"
 
 
-def test_root_version_command(capsys) -> None:
+def test_root_version_command(capsys: pytest.CaptureFixture[str]) -> None:
     assert axlib_main(["version"]) == 0
     assert capsys.readouterr().out.strip() == "1.0.0"
 
 
-
-
-def test_root_version_flag(capsys) -> None:
+def test_root_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
     assert axlib_main(["--version"]) == 0
     assert capsys.readouterr().out.strip() == "1.0.0"
 
 
-def test_credential_file_dry_run_never_prints_values(capsys) -> None:
+def test_credential_file_dry_run_never_prints_values(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     status = credential_file_main(
         [
             "add",

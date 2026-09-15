@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Regression test for the educational docstring contract."""
 
 from __future__ import annotations
@@ -16,9 +19,11 @@ def test_source_functions_have_required_docstring_sections() -> None:
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             docstring = ast.get_docstring(node) or ""
-            for section in ("Args:", "Returns:", "Raises:"):
-                if section not in docstring:
-                    problems.append(f"{path}:{node.lineno}:{node.name}:{section}")
+            problems.extend(
+                f"{path}:{node.lineno}:{node.name}:{section}"
+                for section in ("Args:", "Returns:", "Raises:")
+                if section not in docstring
+            )
     assert not problems, "\n".join(problems)
 
 
@@ -39,7 +44,5 @@ def test_source_scopes_do_not_redefine_functions() -> None:
             for name, line_numbers in definitions.items():
                 if len(line_numbers) > 1:
                     scope_name = getattr(scope, "name", "<module>")
-                    problems.append(
-                        f"{path}:{scope_name}.{name}:{line_numbers}"
-                    )
+                    problems.append(f"{path}:{scope_name}.{name}:{line_numbers}")
     assert not problems, "\n".join(problems)

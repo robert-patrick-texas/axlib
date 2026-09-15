@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Streaming text filters used in network-automation preparation pipelines.
 
 The modules in this package clean comments and whitespace, expand include files,

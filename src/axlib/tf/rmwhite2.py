@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Normalize whitespace with cautious, line-scoped quote detection.
 
 This module is the conservative companion to :mod:`axlib.tf.rmwhite`.  It
@@ -24,7 +27,7 @@ from collections.abc import Sequence
 
 from ._cli import add_text_io_arguments, read_text, render_cli_error, write_text
 
-QUOTE_PAIRS = (("\"", "\""), ("\u2018", "\u2019"))
+QUOTE_PAIRS = (('"', '"'), ("\u2018", "\u2019"))
 STRAIGHT_SINGLE = "'"
 
 

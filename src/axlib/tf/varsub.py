@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Replace case-insensitive ``<var>name</var>`` template tokens.
 
 Simple network templates often need only a few substitutions such as hostname,

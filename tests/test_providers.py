@@ -1,6 +1,13 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for Redis provider lifecycle, TTL, and invalidation behavior."""
 
 from __future__ import annotations
+
+from typing import Any
+
+import pytest
 
 from axlib.credentials.providers import RedisCredentialCache
 from axlib.credentials.settings import CredentialSettings
@@ -42,12 +49,16 @@ class FakeRedisModule:
         self.client = client
         self.options: dict[str, object] = {}
 
-    def Redis(self, **options):
+    def Redis(self, **options: Any) -> FakeRedisClient:  # noqa: N802
+        # Named to match the real `redis` module's `Redis` class, which
+        # `RedisCredentialCache` constructs as `self._redis_module.Redis(...)`.
         self.options = options
         return self.client
 
 
-def test_redis_cache_closes_applies_ttl_and_invalidates(monkeypatch) -> None:
+def test_redis_cache_closes_applies_ttl_and_invalidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = FakeRedisClient()
     module = FakeRedisModule(client)
     monkeypatch.setattr(
@@ -72,5 +83,3 @@ def test_redis_cache_closes_applies_ttl_and_invalidates(monkeypatch) -> None:
     assert client.expirations == [("axlib:operator", 120)]
     assert client.deleted_fields == [("axlib:operator", ("netpass",))]
     assert client.closed is True
-
-

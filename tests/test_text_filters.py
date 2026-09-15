@@ -1,3 +1,6 @@
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
 """Behavior tests for reusable axlib text transformations."""
 
 from __future__ import annotations
@@ -31,9 +34,7 @@ def test_expand_includes_nested_and_relative(tmp_path: Path) -> None:
         base_dir=tmp_path,
     )
 
-    assert result == (
-        "hostname edge-1\ninterface Gi0/1\n description Uplink\n"
-    )
+    assert result == ("hostname edge-1\ninterface Gi0/1\n description Uplink\n")
 
 
 def test_expand_includes_cycle_and_missing_are_visible(tmp_path: Path) -> None:
@@ -66,14 +67,12 @@ def test_expand_includes_zero_depth_inserts_direct_file_only(tmp_path: Path) -> 
 def test_strip_comments_protects_quoted_and_embedded_markers() -> None:
     text = (
         "hostname edge-1  # inventory note\n"
-        "description \"WAN #1\"\n"
+        'description "WAN #1"\n'
         "snmp community#literal\n"
         "! whole line\n"
     )
     assert strip_comments(text) == (
-        "hostname edge-1  \n"
-        "description \"WAN #1\"\n"
-        "snmp community#literal\n"
+        'hostname edge-1  \ndescription "WAN #1"\nsnmp community#literal\n'
     )
 
 
