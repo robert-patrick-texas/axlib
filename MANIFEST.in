@@ -1,0 +1,10 @@
+include AUTHORS.md
+include CHANGELOG.md
+include LICENSE
+include Makefile
+include README.md
+recursive-include docs *.md
+include examples/axlib.toml.example
+recursive-include examples/text *.md *.test *.toml *.white *.yaml
+recursive-include tests *.py
+recursive-include tools *.py

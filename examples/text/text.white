@@ -1,0 +1,10 @@
+No quotes here,   just   extra   spaces	and	tabs.
+"This double-quoted region   preserves   its   spacing	and tabs."
+'This single-quoted region   also	preserves   its   spacing.'
+Mixed:   normalize   this   but   "keep   this   intact"   and   fix   this.
+Escaped quote inside doubles: "she said \"hello   world\"   to me"   then   left.
+'Curly   single   with   an   apostrophe   isn\'t   a   problem'   right?
+Multiple	tabs		and		spaces		before	a	"protected	block	 here"		after.
+"First   quoted"   gap   gap   "second   quoted"   gap   gap   "third   quoted."
+No closing quote — unterminated region	  	  edge	case:   "no close
+Plain	line	with	only	tabs	and	no	quotes	whatsoever	at	all.

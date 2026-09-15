@@ -1,0 +1,41 @@
+# axlib 1.0.0 credential configuration example.
+# Relative credential/key paths are resolved from this TOML file's directory.
+
+[credentials]
+shared_service = "network-shared"
+
+# Axlib-native AES-256-GCM text credential store.
+[credential_file]
+enabled = true
+file = "/var/lib/axlib/credentials.axc"
+key_file = "/etc/axlib/credential-file.key"
+lock_timeout = 5.0
+file_mode = "0660"
+key_file_mode = "0640"
+group = "netops"
+enforce_permissions = true
+# owner = "root"
+
+# AES-256-GCM SQLite store. When both stores are enabled, SQLite is checked first.
+[sqlite]
+enabled = true
+database = "/var/lib/axlib/credentials.db"
+key_file = "/etc/axlib/sqlite-aes256.key"
+timeout = 5.0
+database_mode = "0660"
+key_file_mode = "0640"
+group = "netops"
+enforce_permissions = true
+# owner = "root"
+
+# Optional plaintext cache. TLS is recommended for remote Redis endpoints.
+[redis]
+enabled = false
+host = "localhost"
+port = 6379
+db = 15
+tls = false
+connect_timeout = 2.0
+socket_timeout = 2.0
+cache_ttl = 900
+key_prefix = "axlib"

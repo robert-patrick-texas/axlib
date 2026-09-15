@@ -1,0 +1,113 @@
+# this is a test
+ ; this is another test
+  ! this is a third test
+one # remove
+ two   ; remove
+//  three  	! remove
+
+x
+
+    
+       
+
+x
+	// one two three	//
+123
+456789         78  23 9  00    1    2  3  , 5  "   6 : "
+0
+-42
+3.14159
+
+  """
+discard this if triple quote removal is enabled"""
+
+myvar = 0 ''' this too can be discard as triple quoted'''
+
+'''
+ var1 =  value1
+    var2=42
+path = /usr/local/bin    
+
+enabled = true
+
+threshold= 0.85
+
+timing ="yes"
+
+name = "Alice"
+greeting = "Hello, world!"
+path_with_space = "C:\Program Files\App"
+escaped_quote = "He said \"hi\""
+single_quote = 'example value'
+
+# full line hash comment
+key = value  # inline hash comment
+another = 123#not a comment if parser requires space
+
+// full line double-slash comment
+url = http://example.com // trailing comment
+
+; full line semicolon comment
+timeout = 30 ; inline semicolon comment
+
+! full line bang comment
+mode = active ! inline bang comment
+
+
+def add(a, b):
+    return a + b  # python inline comment
+
+class Example:
+    def __init__(self, x):
+        self.x = x
+
+    def compute(self):
+        if self.x > 0:
+            return self.x * 2
+        return 0
+
+for i in range(3):
+    print(i)
+
+
+{
+    "name": "Alice",
+    "age": 30,
+    "active": true,
+    "roles": ["admin", "user"],
+    "nested": {
+        "key": "value",
+        "number": 123
+    }
+}
+
+{"compact":true,"items":[1,2,3,4]}
+
+
+[DEFAULT]
+app_name = TestApp
+version = 1.0
+
+[server]
+host = localhost
+port = 8080
+
+[database]
+user = dbuser
+password = secret
+
+
+id,name,age
+1,Alice,30
+2,Bob,25
+3,Charlie,35
+
+"a","b","c"
+"1","2","3"
+
+
+mixed = "value # not a comment inside quotes"
+another_mixed = 'value // not a comment inside quotes'
+json_like = "{ \"key\": \"value; still inside\" }"
+code_line = print("hello") # trailing comment
+
