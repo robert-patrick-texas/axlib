@@ -11,6 +11,7 @@ authors = [
 ]
 keywords = [
     "network",
+    "tui",
     "automation",
     "netops",
     "text-processing",
@@ -42,6 +43,7 @@ dependencies = [
 axlib = "axlib.__main__:main"
 axlib-credential-file = "axlib.credentials.file_cli:main"
 axlib-credential-db = "axlib.credentials.sqlite_cli:main"
+axlib-credential-tui = "axlib.credentials.tui:main"
 axlib-tf = "axlib.tf.__main__:main"
 axlib-tf-include = "axlib.tf.incfile:main"
 axlib-tf-comments = "axlib.tf.rmcomment:main"
@@ -58,12 +60,21 @@ Repository = "https://github.com/robert-patrick-texas/axlib"
 Documentation = "https://github.com/robert-patrick-texas/axlib"
 Issues = "https://github.com/robert-patrick-texas/axlib/issues"
 
+[project.optional-dependencies]
+tui = [
+    "rich>=15.0.0",
+    "textual>=8.2.8",
+]
+
 [build-system]
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
+    # Developers always get the optional TUI dependencies, so `ty` can check
+    # and pytest can exercise axlib.credentials.tui after a plain `uv sync`.
+    "axlib[tui]",
     "pytest>=8",
     "pytest-cov>=5",
     # Pinned exactly: `select = ["ALL"]` in [tool.ruff.lint] means every ruff
@@ -155,3 +166,6 @@ author = "Robert Patrick"
 # A standalone script invoked as `python tools/audit_docstrings.py`, not a
 # package; it is never imported.
 "tools/audit_docstrings.py" = ["INP001"]
+
+[tool.uv.sources]
+axlib = { workspace = true }

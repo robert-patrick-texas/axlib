@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Added `axlib.credentials.admin.StoreAdmin`, a store-agnostic Python administration API (status, initialize, add, update with field removal, delete, rotate key, advice notes). It normalizes service names, validates fields against record profiles, and clears the Redis cache after every change without ever returning secret values.
+- Added record profiles (`axlib.credentials.profiles`): `network` for `ax.getkeys()` and `infoblox` for `ax.getinfoblox()`. Both CLIs accept `--profile`, so Infoblox records can now be provisioned without Python.
+- Added `update --remove FIELD` to both CLIs.
+- Refactored `axlib credential-db` and `axlib credential-file` onto one shared implementation (`store_cli.py`); command lines and output are unchanged.
+- A change that is saved but cannot clear the Redis cache now prints `status=...` and `cache=stale` before exiting 1, instead of looking like a failed save.
+- Added the optional full-screen credential manager: `axlib credential-tui` / `axlib-credential-tui` / `python -m axlib.credentials.tui`, installed with `uv add 'axlib[tui]'`. It refuses to start under Textual keystroke logging, blocks clipboard copies of secrets, matches colors to the terminal, and closes after an idle timeout.
+- Added standalone commands `python -m axlib.credentials.admin` (store health check) and `python -m axlib.credentials.profiles`.
+- Moved `normalize_service_for_write` to `axlib.credentials.manager`; it is still importable from `axlib.credentials.cli_common`.
 - Added `rotate_key()` to `CredentialFileStore` and `SQLiteCredentialStore`, re-encrypting every record and the store's key-check marker under a new AES-256 key.
 - Added matching `axlib credential-file rotate-key` and `axlib credential-db rotate-key` CLI subcommands with `--generate-key`, `--new-key-file`, `--dry-run`, and a required `--yes` confirmation.
 - Rotation requires a configured key file (not an environment-only key) and replaces that file only after the durable store has already been updated; an interrupted rotation leaves the new key recoverable at `<key_file>.rotating` instead of losing access to the store.

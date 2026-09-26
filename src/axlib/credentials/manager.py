@@ -174,6 +174,44 @@ def normalize_legacy_service_name(service: object = "default") -> str:
     return text.replace(".", "").replace("-", "").replace("_", "")
 
 
+def normalize_service_for_write(service: str) -> str:
+    """Validate and normalize a service before changing credential storage.
+
+    Lookups are forgiving (``ax.getkeys("first.last")`` simply normalizes the
+    name), but writes should be strict: a stored service name must be one that a
+    later lookup will find again.  Every administration path -- the Python
+    :class:`axlib.credentials.admin.StoreAdmin` API, both CLIs, and the TUI --
+    calls this one function so they cannot disagree about what a valid name is.
+
+    Args:
+        service (str): Operator name or logical service, such as ``first.last``
+            or ``network-shared``.
+
+    Returns:
+        str: Lookup-compatible service key with dots, dashes, and underscores
+            removed.
+
+    Raises:
+        ValueError: If the service is blank, contains whitespace, or becomes
+            blank after normalization.
+    """
+    candidate = service.strip()
+    if not candidate:
+        raise ValueError("Service name cannot be blank.")
+    if any(character.isspace() for character in candidate):
+        raise ValueError("Service name cannot contain whitespace.")
+
+    # Keeping one normalization rule across Redis, SQLite, and encrypted-file
+    # storage prevents a script from looking up a different record simply
+    # because the durable backend changed.
+    normalized = normalize_legacy_service_name(candidate)
+    if not normalized:
+        raise ValueError(
+            "Service name must contain characters other than '.', '-', or '_'."
+        )
+    return normalized
+
+
 def merge_missing(
     destination: MutableMapping[str, str | None],
     source: Mapping[str, str | None],

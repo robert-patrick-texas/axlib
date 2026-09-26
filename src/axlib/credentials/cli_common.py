@@ -15,6 +15,11 @@ are supported for scripting convenience but secure prompts or injected
 environment variables are preferable because shell history is often retained on
 shared jump hosts.
 
+The module also provides :func:`render_table`, the one aligned-column text
+renderer used by every credential command that prints a table.  Plain aligned
+columns (rather than box-drawing characters) keep the output friendly to
+``grep``, ``awk``, and ``cut`` in shell pipelines.
+
 Dependencies:
     Only the Python standard library and :mod:`axlib.credentials.manager`.
 
@@ -31,42 +36,66 @@ import getpass
 import os
 import re
 from collections.abc import Sequence
+from typing import TextIO
 
-from .manager import normalize_legacy_service_name
+# ``normalize_service_for_write`` now lives in the manager module beside the
+# lookup-time normalization it builds on, so the Python admin API can use it
+# without importing CLI code.  Importing it here (and naming it in __all__)
+# keeps existing ``from axlib.credentials.cli_common import
+# normalize_service_for_write`` statements working.
+from .manager import normalize_service_for_write
+
+# __all__ declares this module's public names.  It is what ``from module
+# import *`` exports, and it tells linters that the re-export above is
+# intentional rather than an unused import.
+__all__ = [
+    "FIELD_PATTERN",
+    "collect_values",
+    "normalize_service_for_write",
+    "parse_assignment",
+    "parse_environment_assignment",
+    "render_table",
+    "validate_field_name",
+]
 
 FIELD_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 
 
-def normalize_service_for_write(service: str) -> str:
-    """Validate and normalize a service before changing credential storage.
+def render_table(
+    headers: Sequence[str],
+    rows: Sequence[Sequence[str]],
+    *,
+    stream: TextIO,
+) -> None:
+    """Print rows as left-aligned text columns separated by two spaces.
 
     Args:
-        service (str): Operator name or logical service supplied with
-            ``--service``.
+        headers (Sequence[str]): Column titles, printed as the first line.
+        rows (Sequence[Sequence[str]]): Table cells; every row must have the
+            same number of cells as ``headers``.
+        stream (TextIO): Destination such as :data:`sys.stdout`.
 
     Returns:
-        str: Lookup-compatible service key with dots, dashes, and underscores
-            removed.
+        None: The header and zero or more rows are written to ``stream``.
 
     Raises:
-        ValueError: If the service is blank, contains whitespace, or becomes
-            blank after normalization.
+        ValueError: If a row has a different number of cells than ``headers``.
+        OSError: If ``stream`` cannot be written.
     """
-    candidate = service.strip()
-    if not candidate:
-        raise ValueError("Service name cannot be blank.")
-    if any(character.isspace() for character in candidate):
-        raise ValueError("Service name cannot contain whitespace.")
-
-    # Keeping one normalization rule across Redis, SQLite, and encrypted-file
-    # storage prevents a script from looking up a different record simply
-    # because the durable backend changed.
-    normalized = normalize_legacy_service_name(candidate)
-    if not normalized:
-        raise ValueError(
-            "Service name must contain characters other than '.', '-', or '_'."
-        )
-    return normalized
+    for row in rows:
+        if len(row) != len(headers):
+            raise ValueError(
+                f"Table row has {len(row)} cells but there are {len(headers)} headers."
+            )
+    # Each column is as wide as its longest cell, including the header.
+    widths = [
+        max(len(cell) for cell in (header, *(row[index] for row in rows)))
+        for index, header in enumerate(headers)
+    ]
+    for line in (headers, *rows):
+        cells = (cell.ljust(width) for cell, width in zip(line, widths, strict=True))
+        # rstrip() avoids trailing spaces that would confuse `diff` or `wc -L`.
+        print("  ".join(cells).rstrip(), file=stream)
 
 
 def validate_field_name(field: str) -> str:

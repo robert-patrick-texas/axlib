@@ -4,9 +4,10 @@
 """Top-level command dispatcher for the axlib teaching package.
 
 The package command groups text processing, credential diagnostics, AES-256-GCM
-text-file management, and encrypted SQLite management behind discoverable
-subcommands. Existing module commands and Python imports remain available, so
-engineers can move gradually from a shell pipeline to reusable Python functions.
+text-file management, encrypted SQLite management, and the optional full-screen
+credential manager behind discoverable subcommands. Existing module commands and
+Python imports remain available, so engineers can move gradually from a shell
+pipeline to reusable Python functions.
 
 Dependencies vary by command: text filters use only the standard library, while
 credential commands need the packages documented in ``docs/CREDENTIALS.md``.
@@ -25,6 +26,17 @@ from . import __version__
 
 CommandMain = Callable[[Sequence[str] | None], int]
 
+# One tuple lists every sub-command, so the parser's choices and the dispatch
+# check below cannot drift apart when a command is added.
+COMMANDS = (
+    "version",
+    "tf",
+    "credentials",
+    "credential-file",
+    "credential-db",
+    "credential-tui",
+)
+
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the top-level axlib help parser.
@@ -42,9 +54,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         prog="python -m axlib",
         description="Educational network-automation helpers.",
         epilog=(
-            "Commands: version, tf, credentials, credential-file, credential-db. "
-            "Add --help after a "
-            "command for command-specific options."
+            f"Commands: {', '.join(COMMANDS)}. Add --help after a command for "
+            "command-specific options."
         ),
     )
     parser.add_argument(
@@ -54,11 +65,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         version=__version__,
         help="Show the installed axlib version and exit.",
     )
-    parser.add_argument(
-        "command",
-        nargs="?",
-        choices=("version", "tf", "credentials", "credential-file", "credential-db"),
-    )
+    parser.add_argument("command", nargs="?", choices=COMMANDS)
     return parser
 
 
@@ -66,8 +73,8 @@ def _load_command(command: str) -> CommandMain:
     """Import a command entry point only when it is requested.
 
     Args:
-        command (str): One of ``tf``, ``credentials``, ``credential-file``, or
-            ``credential-db``.
+        command (str): One of ``tf``, ``credentials``, ``credential-file``,
+            ``credential-db``, or ``credential-tui``.
 
     Returns:
         CommandMain: Callable accepting an optional argument sequence.
@@ -90,6 +97,12 @@ def _load_command(command: str) -> CommandMain:
         return main
     if command == "credential-db":
         from .credentials.sqlite_cli import main
+
+        return main
+    if command == "credential-tui":
+        # The TUI package imports Textual only after its own safety checks, so
+        # this import succeeds even when the optional extra is not installed.
+        from .credentials.tui import main
 
         return main
     raise ValueError(f"Unsupported axlib command: {command}")
@@ -120,7 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # makes shell usage intuitive without breaking the documented subcommand.
         print(__version__)
         return 0
-    if command not in {"tf", "credentials", "credential-file", "credential-db"}:
+    if command not in COMMANDS:
         parser.error(f"unknown command: {command}")
 
     return _load_command(command)(arguments)

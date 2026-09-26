@@ -93,6 +93,65 @@ axlib credential-db rotate-key --generate-key --yes
 
 Both CLIs also support `--from-env FIELD=ENV_VAR`, `--dry-run` where applicable, and `list --json`. Commands print field names but never credential values.
 
+`update --remove FIELD` deletes an optional field such as `netenable`; required fields cannot be removed (delete the whole service instead). If a change is saved but the Redis cache cannot be cleared, the command prints `status=...` and `cache=stale`, explains on standard error how long the old cached value may be used, and exits with status 1.
+
+## Record profiles
+
+A profile lists the fields one lookup helper expects. `add` and `update` accept `--profile` (default `network`):
+
+| Profile | Fields (required in bold) | Read by |
+| --- | --- | --- |
+| `network` | **netuser**, **netpass**, netenable | `ax.getkeys()` |
+| `infoblox` | **ibgrid**, **ibuser**, **ibpass** | `ax.getinfoblox()` |
+
+```bash
+axlib credential-db add --service infoblox --profile infoblox \
+    --set ibgrid=gm.example.net --set ibuser=api --prompt ibpass
+python -m axlib.credentials.profiles --json
+```
+
+## Python administration API
+
+`axlib.credentials.StoreAdmin` is the programming interface behind both CLIs and the TUI. It normalizes service names exactly as `ax.getkeys()` looks them up, validates fields against a profile, clears the Redis cache after every change, and never returns a secret value.
+
+```python
+from axlib.credentials import INFOBLOX_PROFILE, StoreAdmin, StoreKind, load_settings
+
+admin = StoreAdmin(load_settings("/etc/axlib/axlib.toml"), StoreKind.SQLITE)
+
+status = admin.status()  # safe summary; errors are reported, not raised
+if status.can_initialize:
+    admin.initialize(generate_key=status.can_generate_key)
+
+result = admin.add("first.last", {"netuser": "first.last", "netpass": password})
+result.service  # 'firstlast'
+result.cache_error  # None, or why Redis could not be cleared
+
+admin.update("firstlast", {"netpass": new_password}, remove=["netenable"])
+admin.add(
+    "infoblox",
+    {"ibgrid": "gm", "ibuser": "api", "ibpass": api_password},
+    profile=INFOBLOX_PROFILE,
+)
+
+for item in admin.annotate(admin.list_records(), operator="first.last"):
+    print(item.record.service, [note.text for note in item.notes])
+
+admin.delete("firstlast")
+admin.rotate_key()  # new random key; returns the record count
+```
+
+Run the module directly for a health check that suits cron or monitoring. It exits `0` only when every enabled store is ready:
+
+```bash
+python -m axlib.credentials.admin --config /etc/axlib/axlib.toml
+python -m axlib.credentials.admin --json | jq '.[] | select(.ready | not)'
+```
+
+## Credential manager (TUI)
+
+`axlib credential-tui` is an optional full-screen manager for the same stores, intended for operators who use `ax.getkeys()` scripts but do not write Python. Install it with `uv add 'axlib[tui]'`; see [CREDENTIAL_TUI.md](CREDENTIAL_TUI.md).
+
 `rotate-key` re-encrypts every record and the store's key-check marker under a new AES-256 key, replacing the configured key file only after the durable store has already been updated. It requires a key file (not an environment-only key) because axlib cannot update the calling shell's environment; see [CREDENTIAL_FILE.md](CREDENTIAL_FILE.md#rotate_key) and [SQLITE_CREDENTIALS.md](SQLITE_CREDENTIALS.md#rotate_key) for the interrupted-rotation recovery path.
 
 ## Storage format policy
