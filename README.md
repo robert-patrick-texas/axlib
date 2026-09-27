@@ -1,4 +1,4 @@
-# axlib 1.0.0
+# axlib
 
 Axlib is an educational Python package for Network Operations staff building automation scripts. It combines pipeline-friendly text filters with reusable credential helpers that can resolve operator credentials without embedding passwords in source code.
 
@@ -113,7 +113,7 @@ When both durable stores are enabled, SQLite is preferred before the encrypted t
 
 ## Storage-version policy
 
-Axlib 1.0.0 intentionally performs no credential-store migrations. The text store accepts only its current format version and AES-256-GCM cipher. SQLite accepts only its current axlib schema version. Unsupported versions fail clearly so operators can deliberately recreate/reprovision a store rather than have startup mutate it.
+Axlib intentionally performs no credential-store migrations. The text store accepts only its current format version and AES-256-GCM cipher. SQLite accepts only its current axlib schema version. Unsupported versions fail clearly so operators can deliberately recreate/reprovision a store rather than have startup mutate it.
 
 ## Text filters
 

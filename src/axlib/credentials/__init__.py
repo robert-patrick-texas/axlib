@@ -16,8 +16,8 @@ No connection or credential file is opened at import time.  Redis is imported
 only when caching is enabled, while durable encryption uses ``cryptography``.
 The administration names (``StoreAdmin``, profiles, and friends) are loaded on
 first use; see :func:`__getattr__`.
-Unsupported text-file or SQLite schema versions are rejected; axlib 1.0.0 does
-not include migration logic for older storage formats.
+Unsupported text-file or SQLite schema versions are rejected; axlib does not
+include migration logic for older storage formats.
 
 Example:
     >>> from axlib.credentials import CredentialSettings, lookup_values

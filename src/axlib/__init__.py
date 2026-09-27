@@ -27,9 +27,19 @@ Example:
 from __future__ import annotations
 
 from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
-__version__ = "1.0.0"
+# The release number is written in exactly one place: ``version`` in
+# pyproject.toml (change it with ``uv version --bump patch``).  Installing the
+# package records that number in its metadata, and importlib.metadata reads it
+# back here, so the code can never report a different version than the release.
+try:
+    __version__ = version("axlib")
+except PackageNotFoundError:  # pragma: no cover - source tree never installed
+    # Importing straight from an uninstalled checkout has no metadata to read;
+    # "0+unknown" is a valid version string that clearly says so.
+    __version__ = "0+unknown"
 
 if TYPE_CHECKING:
     from .secrets import getinfoblox, getkeys, getnetkeys, readkeyring, updatedict

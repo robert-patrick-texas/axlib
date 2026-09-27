@@ -43,16 +43,19 @@ import sys
 from collections.abc import Mapping, Sequence
 from typing import TextIO
 
-from axlib import config
+from axlib import __version__, config
 from axlib.credentials.manager import (
     lookup_values,
     merge_missing,
     normalize_legacy_service_name,
 )
 
-__version__ = "1.0.0"
+# ``__version__`` is imported from the package (see above) rather than written
+# here, so older scripts that read ``axlib.secrets.__version__`` always see the
+# current release.
 
 __all__ = [
+    "__version__",
     "getinfoblox",
     "getkeys",
     "getnetkeys",

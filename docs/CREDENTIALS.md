@@ -1,6 +1,6 @@
 # axlib credentials
 
-Axlib 1.0.0 gives Network Operations scripts one lookup API while allowing two AES-256-GCM durable stores. Existing operator scripts may continue to use:
+Axlib gives Network Operations scripts one lookup API while allowing two AES-256-GCM durable stores. Existing operator scripts may continue to use:
 
 ```python
 import axlib as ax
@@ -156,6 +156,6 @@ python -m axlib.credentials.admin --json | jq '.[] | select(.ready | not)'
 
 ## Storage format policy
 
-Axlib 1.0.0 intentionally contains no storage migration framework. The encrypted text file accepts only axlib text-format version 1 with AES-256-GCM. SQLite accepts only its current axlib application ID and schema version. An unsupported version fails with an operator-facing error; recreate or reprovision the store deliberately rather than relying on application startup to modify it. Key rotation is a separate, supported operation: it re-encrypts current-format data under a new key rather than changing the format or schema, so it does not conflict with this no-migration policy.
+Axlib intentionally contains no storage migration framework. The encrypted text file accepts only axlib text-format version 1 with AES-256-GCM. SQLite accepts only its current axlib application ID and schema version. An unsupported version fails with an operator-facing error; recreate or reprovision the store deliberately rather than relying on application startup to modify it. Key rotation is a separate, supported operation: it re-encrypts current-format data under a new key rather than changing the format or schema, so it does not conflict with this no-migration policy.
 
 See [CREDENTIAL_FILE.md](CREDENTIAL_FILE.md) and [SQLITE_CREDENTIALS.md](SQLITE_CREDENTIALS.md) for full Python API examples.

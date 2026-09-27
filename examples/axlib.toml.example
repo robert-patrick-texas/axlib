@@ -1,4 +1,4 @@
-# axlib 1.0.0 credential configuration example.
+# axlib credential configuration example.
 # Relative credential/key paths are resolved from this TOML file's directory.
 
 [credentials]

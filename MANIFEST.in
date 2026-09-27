@@ -3,6 +3,7 @@ include CHANGELOG.md
 include LICENSE
 include Makefile
 include README.md
+include RELEASE_NOTES.md
 recursive-include docs *.md
 include examples/axlib.toml.example
 recursive-include examples/text *.md *.test *.toml *.white *.yaml

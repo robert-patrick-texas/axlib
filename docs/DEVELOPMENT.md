@@ -54,6 +54,22 @@ docstring audit, and pytest with coverage.
 5. Document exactly which text can be changed or destroyed.
 6. Add unit and CLI tests, including line endings and empty input.
 
+## Releasing
+
+The release number is written in exactly one place, `version` in
+`pyproject.toml`. `axlib.__version__` reads it from the installed package
+metadata, and `test_release_number_is_not_hard_coded_elsewhere` fails if the
+number (or text such as "axlib" followed by a version) appears in any file
+other than `pyproject.toml`, `uv.lock`, `CHANGELOG.md`, and `RELEASE_NOTES.md`.
+Describe current behavior without a version number so documents never go stale.
+
+```bash
+uv version --bump patch      # or minor / major; updates pyproject.toml and uv.lock
+# Date the new CHANGELOG.md heading and add a RELEASE_NOTES.md section.
+make check
+uv build --sdist             # dist/axlib-<version>.tar.gz
+```
+
 ## Credential administration layers
 
 Administration code is layered so that every rule lives in exactly one place:

@@ -1,6 +1,6 @@
 # AES-256-GCM SQLite credential store
 
-`SQLiteCredentialStore` stores one encrypted JSON payload per service. The service name and timestamps remain visible for administration; field names and values are inside the AES-256-GCM ciphertext. The current schema version is accepted exactly. Axlib 1.0.0 does not migrate older SQLite credential schemas.
+`SQLiteCredentialStore` stores one encrypted JSON payload per service. The service name and timestamps remain visible for administration; field names and values are inside the AES-256-GCM ciphertext. The current schema version is accepted exactly. Axlib does not migrate older SQLite credential schemas.
 
 ## Configure and initialize
 
