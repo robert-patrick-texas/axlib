@@ -2,6 +2,59 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.2
+
+### Overview
+
+This release lets Network Operations staff load their network login into the shell when they SSH in. `axlib netenv-set` exports `NETUSER`, `NETPASS`, and `NETENABLE` from the operator's axlib record, and `axlib netenv-clear` removes them. Storage formats, `ax.getkeys()`, and the lookup precedence are unchanged.
+
+### Session credentials
+
+A program cannot change its parent shell's environment, so both commands print shell statements for the shell to `eval`:
+
+```bash
+eval "$(axlib netenv-set)"      # export NETUSER, NETPASS, NETENABLE
+eval "$(axlib netenv-clear)"    # unset them
+```
+
+- `$USER` selects the record, as in `ax.getkeys()`. `--service NAME` loads another record.
+- Existing `NET*` variables are ignored during the lookup, so a stale value never looks like a successful load.
+- The shared fallback service is used only with `--allow-shared`, and always with a warning.
+- A record without an enable secret unsets `NETENABLE`.
+- Values are quoted with `shlex.quote`; standard output carries only shell code, and every message goes to standard error.
+- On any failure nothing is printed on standard output and the environment is unchanged. Exit statuses: `0` exported, `1` no complete record, `2` configuration or store error, `3` refused because standard output is a terminal (which keeps the password off the screen).
+- `--check` reports which fields would be set without showing values.
+
+The commands are also available as `axlib-netenv-set`, `axlib-netenv-clear`, and `python -m axlib.credentials.netenv set|clear`.
+
+### uv scripts and shell integration
+
+- `scripts/netenv-set` and `scripts/netenv-clear` are uv inline-metadata scripts (`#!/usr/bin/env -S uv run --quiet --script`) that install axlib from the checkout they live in and run from any directory. Call them by their real path; a symlink moves the directory uv resolves the checkout from.
+- `examples/netenv/netenv.sh` defines `netenv-set` and `netenv-clear` shell functions for bash and zsh and loads credentials when an interactive shell starts. Non-interactive sessions (`ssh host command`, `scp`, `sftp`, `rsync`) are left alone, `set -x` tracing is paused during the `eval`, and the functions return the command's real exit status. Install it in `~/.bashrc`, `~/.zshrc`, or `/etc/profile.d/`.
+
+Read `docs/NETENV.md` before enabling this on a shared host. Exported passwords are visible to every program the shell starts, remain in long-running `tmux` sessions after a password change, and take precedence over the store in `ax.getkeys()`.
+
+### Compatibility
+
+- No storage format or schema changes, and no migrations.
+- No new runtime dependencies.
+- `ax.getkeys()`, `ax.getinfoblox()`, and existing commands are unchanged.
+
+### Validation
+
+Validated on Python 3.14.3:
+
+```text
+Ruff format and lint (all rules, including scripts/):  passed
+ty static type check:                                  passed
+Educational docstring audit:                           passed
+Main pytest suite:                                     156 passed
+Measured source line coverage:                         82%
+Source-distribution build:                             passed
+Extracted source-distribution tests:                   156 passed
+bash eval round trip, set -x, non-interactive guard:   passed
+```
+
 ## 1.0.1
 
 ### Overview

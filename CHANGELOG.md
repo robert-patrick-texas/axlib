@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 - 2026-09-29
+
+- Added `axlib netenv-set` and `axlib netenv-clear` (also `axlib-netenv-set`, `axlib-netenv-clear`, and `python -m axlib.credentials.netenv set|clear`). They print `export`/`unset` statements to `eval`, so an operator's `NETUSER`, `NETPASS`, and `NETENABLE` can be loaded into the shell at SSH login. `$USER` selects the record as in `ax.getkeys()`. Existing `NET*` variables are ignored during lookup, and the shared fallback is used only with `--allow-shared`. Values are quoted with `shlex.quote`, and the commands refuse to print shell code to a terminal.
+- Added uv inline-metadata scripts `scripts/netenv-set` and `scripts/netenv-clear` that run from any directory without an activated environment.
+- Added `examples/netenv/netenv.sh`, bash/zsh integration that defines `netenv-set`/`netenv-clear` shell functions and loads credentials in interactive shells only.
+- Added `docs/NETENV.md`.
+
 ## 1.0.1 - 2026-09-26
 
 - Added `axlib.credentials.admin.StoreAdmin`, a store-agnostic Python administration API (status, initialize, add, update with field removal, delete, rotate key, advice notes). It normalizes service names, validates fields against record profiles, and clears the Redis cache after every change without ever returning secret values.

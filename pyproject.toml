@@ -1,6 +1,6 @@
 [project]
 name = "axlib"
-version = "1.0.1"
+version = "1.0.2"
 description = "Educational Python tools and library helpers for Network Operations automation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -44,6 +44,8 @@ axlib = "axlib.__main__:main"
 axlib-credential-file = "axlib.credentials.file_cli:main"
 axlib-credential-db = "axlib.credentials.sqlite_cli:main"
 axlib-credential-tui = "axlib.credentials.tui:main"
+axlib-netenv-set = "axlib.credentials.netenv:set_main"
+axlib-netenv-clear = "axlib.credentials.netenv:clear_main"
 axlib-tf = "axlib.tf.__main__:main"
 axlib-tf-include = "axlib.tf.incfile:main"
 axlib-tf-comments = "axlib.tf.rmcomment:main"
@@ -106,6 +108,8 @@ line-length = 88
 indent-width = 4
 target-version = "py311"
 cache-dir = "/dev/shm/.cache/ruff"
+# The extensionless uv launchers in scripts/ are Python and are linted too.
+extend-include = ["scripts/netenv-set", "scripts/netenv-clear"]
 
 [tool.ruff.format]
 indent-style = "space"
@@ -166,6 +170,9 @@ author = "Robert Patrick"
 # A standalone script invoked as `python tools/audit_docstrings.py`, not a
 # package; it is never imported.
 "tools/audit_docstrings.py" = ["INP001"]
+# uv inline-metadata (PEP 723) launchers run as `scripts/netenv-set`; they are
+# executables, not importable modules, so hyphenated names are intentional.
+"scripts/*" = ["INP001", "N999"]
 
 [tool.uv.sources]
 axlib = { workspace = true }

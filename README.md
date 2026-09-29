@@ -15,6 +15,7 @@ Axlib is an educational Python package for Network Operations staff building aut
 - Both durable stores support in-place AES-256 key rotation that re-encrypts every record.
 - `StoreAdmin` is one Python administration API for either store; both CLIs and the optional TUI are thin layers over it.
 - An optional full-screen credential manager (TUI) gives non-developers an "easy button" for their `ax.getkeys()` records, locally or over SSH.
+- `axlib netenv-set` / `axlib netenv-clear` load `NETUSER`, `NETPASS`, and `NETENABLE` into an operator's shell at SSH login, and clear them again.
 
 ## Install
 
@@ -69,6 +70,17 @@ axlib credential-tui --config /etc/axlib/axlib.toml
 ```
 
 It lists each service's field names with notes explaining how `ax.getkeys()` will use them, and it adds, edits, and deletes records, initializes stores, and rotates keys. Credential values are never displayed. See `docs/CREDENTIAL_TUI.md`.
+
+## Session credentials at login
+
+Operators can have their network login exported into every SSH session:
+
+```bash
+eval "$(axlib netenv-set)"      # export NETUSER, NETPASS, NETENABLE from $USER's record
+eval "$(axlib netenv-clear)"    # unset them
+```
+
+`examples/netenv/netenv.sh` wraps both in the `netenv-set` and `netenv-clear` shell functions and loads credentials when an interactive bash or zsh shell starts. The uv scripts `scripts/netenv-set` and `scripts/netenv-clear` run the same commands from a checkout, from any directory. Read the warnings in `docs/NETENV.md` before enabling this: exported passwords are visible to every program the shell starts.
 
 ## Python administration API
 
@@ -133,6 +145,7 @@ See `docs/TEXT_FILTERS.md` for filter semantics.
 
 - `docs/CREDENTIALS.md` — lookup precedence, configuration, CLI, administration API, and permissions.
 - `docs/CREDENTIAL_TUI.md` — operator guide for the optional full-screen credential manager.
+- `docs/NETENV.md` — loading credentials into SSH sessions with `netenv-set` / `netenv-clear`: setup, warnings, and troubleshooting.
 - `docs/CREDENTIAL_FILE.md` — full encrypted text-store API with examples for every method.
 - `docs/SQLITE_CREDENTIALS.md` — full SQLite API with examples for every method.
 - `docs/TEXT_FILTERS.md` — pipeline and Python text-processing examples.

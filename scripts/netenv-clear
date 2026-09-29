@@ -1,0 +1,31 @@
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["axlib"]
+#
+# [tool.uv.sources]
+# axlib = { path = "..", editable = true }
+# ///
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+
+"""Unset NETUSER, NETPASS, and NETENABLE in the calling shell.
+
+This is a uv launcher for ``axlib netenv-clear``.  The comment block above is
+PEP 723 inline script metadata: ``uv run --script`` reads it, builds a cached
+virtual environment with axlib installed from this checkout, and runs the file.
+uv resolves the relative ``path = ".."`` from the directory that holds this
+file, so the script works from any working directory as long as it is called
+by its real path (a symlink elsewhere would move the base directory).
+
+It prints shell code, so run it through ``eval``::
+
+    eval "$(/path/to/axlib/scripts/netenv-clear)"
+
+See ``docs/NETENV.md`` for login setup, warnings, and troubleshooting.
+"""
+
+from axlib.credentials.netenv import clear_main
+
+if __name__ == "__main__":
+    raise SystemExit(clear_main())

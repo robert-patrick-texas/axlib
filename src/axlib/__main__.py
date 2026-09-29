@@ -4,8 +4,9 @@
 """Top-level command dispatcher for the axlib teaching package.
 
 The package command groups text processing, credential diagnostics, AES-256-GCM
-text-file management, encrypted SQLite management, and the optional full-screen
-credential manager behind discoverable subcommands. Existing module commands and
+text-file management, encrypted SQLite management, the optional full-screen
+credential manager, and the shell-session credential loaders behind
+discoverable subcommands. Existing module commands and
 Python imports remain available, so engineers can move gradually from a shell
 pipeline to reusable Python functions.
 
@@ -35,6 +36,8 @@ COMMANDS = (
     "credential-file",
     "credential-db",
     "credential-tui",
+    "netenv-set",
+    "netenv-clear",
 )
 
 
@@ -74,7 +77,8 @@ def _load_command(command: str) -> CommandMain:
 
     Args:
         command (str): One of ``tf``, ``credentials``, ``credential-file``,
-            ``credential-db``, or ``credential-tui``.
+            ``credential-db``, ``credential-tui``, ``netenv-set``, or
+            ``netenv-clear``.
 
     Returns:
         CommandMain: Callable accepting an optional argument sequence.
@@ -105,6 +109,14 @@ def _load_command(command: str) -> CommandMain:
         from .credentials.tui import main
 
         return main
+    if command == "netenv-set":
+        from .credentials.netenv import set_main
+
+        return set_main
+    if command == "netenv-clear":
+        from .credentials.netenv import clear_main
+
+        return clear_main
     raise ValueError(f"Unsupported axlib command: {command}")
 
 

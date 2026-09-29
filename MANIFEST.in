@@ -7,5 +7,7 @@ include RELEASE_NOTES.md
 recursive-include docs *.md
 include examples/axlib.toml.example
 recursive-include examples/text *.md *.test *.toml *.white *.yaml
+include examples/netenv/netenv.sh
+include scripts/netenv-set scripts/netenv-clear
 recursive-include tests *.py
 recursive-include tools *.py

@@ -154,6 +154,10 @@ python -m axlib.credentials.admin --json | jq '.[] | select(.ready | not)'
 
 `rotate-key` re-encrypts every record and the store's key-check marker under a new AES-256 key, replacing the configured key file only after the durable store has already been updated. It requires a key file (not an environment-only key) because axlib cannot update the calling shell's environment; see [CREDENTIAL_FILE.md](CREDENTIAL_FILE.md#rotate_key) and [SQLITE_CREDENTIALS.md](SQLITE_CREDENTIALS.md#rotate_key) for the interrupted-rotation recovery path.
 
+## Session environment (`netenv-set`)
+
+`axlib netenv-set` exports an operator's `netuser`, `netpass`, and `netenable` as `NETUSER`, `NETPASS`, and `NETENABLE` in the calling shell (via `eval`), and `axlib netenv-clear` unsets them. Once they are exported, `ax.getkeys()` returns them before consulting any store. See `docs/NETENV.md`.
+
 ## Storage format policy
 
 Axlib intentionally contains no storage migration framework. The encrypted text file accepts only axlib text-format version 1 with AES-256-GCM. SQLite accepts only its current axlib application ID and schema version. An unsupported version fails with an operator-facing error; recreate or reprovision the store deliberately rather than relying on application startup to modify it. Key rotation is a separate, supported operation: it re-encrypts current-format data under a new key rather than changing the format or schema, so it does not conflict with this no-migration policy.
