@@ -463,10 +463,11 @@ Things to know:
   latest release from PyPI instead. Both read the server's store. If you use
   PyPI, keep your version in step with `axlib version` on the server. A
   release that changes a storage format says so in its release notes.
-- **Always require `>=1.0` when installing from PyPI.** The 0.1.x releases
-  still on PyPI predate the credential stores and cannot read the server's
-  store. An internal mirror that has not synced a 1.x release would also give
-  you 0.1.x.
+- **Keep the `>=1.0` floor.** PyPI no longer offers releases before 1.0, but
+  the 0.1.x releases, which predate the credential stores, can still be served
+  by an internal mirror or cache that copied them before they were removed. The
+  floor makes such a source fail clearly instead of installing a release
+  that cannot read the server's store.
 - To run the script from anywhere or from cron, use the project's interpreter
   by full path: `~/projects/backups/.venv/bin/python ~/projects/backups/backup.py`,
   or `uv run --project ~/projects/backups python ~/projects/backups/backup.py`.
@@ -590,4 +591,4 @@ your project.
 | `ModuleNotFoundError: No module named 'netmiko'` (or another library) | The library is not in the environment the script runs in. For the shared environment, ask an administrator to `axuv add` it. For your own project, run `uv add` in the project. |
 | A library works for root, but other users get `cannot import name ... (unknown location)`, `PermissionError`, or `ModuleNotFoundError` | It was installed by plain `uv` under a restrictive umask. Python treats the unreadable directory as an empty namespace package, which produces these errors. The same restrictive modes are also in root's uv cache, so clear the cache before reinstalling: `axuv cache clean <name> <its-dependencies>` then `axuv sync --reinstall-package <name>`. To reset everything, run `axuv cache clean && axuv sync --reinstall` (this downloads all packages again). |
 | A cron job gets the shared account or no credentials | cron did not set `USER`. Use `ax.getkeys(getpass.getuser())` (see [Scheduled jobs](#scheduled-jobs-cron-and-systemd)). |
-| `AttributeError: module 'axlib' has no attribute 'getkeys'` or `No module named 'axlib.credentials'` in your own project | The project has a 0.1.x release, which contains only the text filters and none of the credential code. It comes from PyPI or an internal mirror without a 1.x release. Check with `uv run python -c "import importlib.metadata as m; print(m.version('axlib'))"`, then run `uv add 'axlib>=1.0'` or add the wheel from `/opt/shared/axlib/releases/`. |
+| `AttributeError: module 'axlib' has no attribute 'getkeys'` or `No module named 'axlib.credentials'` in your own project | The project has a 0.1.x release, which contains only the text filters and none of the credential code. PyPI no longer offers 0.1.x, so it came from an internal mirror or cache that kept an old copy, or from an existing environment. Check with `uv run python -c "import importlib.metadata as m; print(m.version('axlib'))"`, then run `uv add 'axlib>=1.0'` or add the wheel from `/opt/shared/axlib/releases/`. |

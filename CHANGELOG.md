@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- `docs/INSTALL.md`: axlib is now published on PyPI, so operators' own projects and uv scripts may use `axlib>=1.0` from PyPI as well as the server's release wheel. The guide explains that the 0.1.x releases on PyPI (or an unsynced mirror) lack the credential stores, and how to recognize and fix that.
+- `docs/INSTALL.md`: axlib is now published on PyPI, so operators' own projects and uv scripts may use `axlib>=1.0` from PyPI as well as the server's release wheel. The 0.1.x releases, which lack the credential stores, have been removed from PyPI; the guide explains that a mirror or cache may still serve them, and how to recognize and fix that.
 
 ## 1.0.3 - 2026-09-29
 
