@@ -1,13 +1,16 @@
 # Changelog
 
+## 1.0.3 - 2026-09-29
+
+- Added `install.sh` to the release tarball. Run as root from an unpacked release, it installs a uv-managed Python in `/opt/shared/python` and axlib as a locked uv project in `/opt/shared/axlib`, and links `/usr/local/bin/axlib`. It creates `/etc/axlib` and `/var/lib/axlib` for the `netops` group, writes a minimal `axlib.toml` only if none exists, sets `AXLIB_CONFIG_FILE` in `/etc/environment` and `/etc/profile.d`, and creates or verifies the SQLite store without ever replacing a key. Options include `--with-tui`, `--with-netenv`, and custom paths. Rerunning it upgrades in place.
+- Added `docs/INSTALL.md`, with a section for administrators (an `axuv` helper for running uv safely on the shared environment, adding libraries such as netmiko and scrapli for every script, pinning, upgrading, and removing them, tracking changes in git, upgrades, rollback, backups, and uninstalling) and a section for network operations staff (using the shared interpreter, a personal uv project or single-file uv script with the release wheel, or `NET*` variables without importing axlib; cron and systemd setup; rules for handling credentials).
+
 ## 1.0.2 - 2026-09-29
 
 - Added `axlib netenv-set` and `axlib netenv-clear` (also `axlib-netenv-set`, `axlib-netenv-clear`, and `python -m axlib.credentials.netenv set|clear`). They print `export`/`unset` statements to `eval`, so an operator's `NETUSER`, `NETPASS`, and `NETENABLE` can be loaded into the shell at SSH login. `$USER` selects the record as in `ax.getkeys()`. Existing `NET*` variables are ignored during lookup, and the shared fallback is used only with `--allow-shared`. Values are quoted with `shlex.quote`, and the commands refuse to print shell code to a terminal.
 - Added uv inline-metadata scripts `scripts/netenv-set` and `scripts/netenv-clear` that run from any directory without an activated environment.
 - Added `examples/netenv/netenv.sh`, bash/zsh integration that defines `netenv-set`/`netenv-clear` shell functions and loads credentials in interactive shells only.
 - Added `docs/NETENV.md`.
-- Added `install.sh` to the release tarball. Run as root from an unpacked release, it installs a uv-managed Python in `/opt/shared/python` and axlib as a locked uv project in `/opt/shared/axlib`, and links `/usr/local/bin/axlib`. It creates `/etc/axlib` and `/var/lib/axlib` for the `netops` group, writes a minimal `axlib.toml` only if none exists, sets `AXLIB_CONFIG_FILE` in `/etc/environment` and `/etc/profile.d`, and creates or verifies the SQLite store without ever replacing a key. Options include `--with-tui`, `--with-netenv`, and custom paths. Rerunning it upgrades in place.
-- Added `docs/INSTALL.md`.
 
 ## 1.0.1 - 2026-09-26
 

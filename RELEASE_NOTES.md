@@ -2,6 +2,62 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.3
+
+### Overview
+
+This release makes axlib straightforward to deploy on a shared Linux host. The release tarball now contains `install.sh`, which sets up a shared Python, a locked axlib environment, and a ready credential store for the `netops` group, and `docs/INSTALL.md` explains how administrators maintain that environment and how network operations staff use it in their own scripts. The axlib package itself is unchanged from the previous release.
+
+### Shared-host installer
+
+The release tarball now contains `install.sh`, which installs axlib for every operator on a Linux host:
+
+```bash
+tar xzf axlib-<version>.tar.gz
+sudo ./axlib-<version>/install.sh            # add --with-tui and/or --with-netenv as needed
+```
+
+| Path | Contents |
+| --- | --- |
+| `/opt/shared/python` | uv-managed Python, readable by every user |
+| `/opt/shared/axlib` | uv project with a locked `.venv`, release wheels, and docs (`current/`) |
+| `/usr/local/bin/axlib` | the `axlib` command |
+| `/etc/axlib/axlib.toml`, `/etc/axlib/sqlite-aes256.key` | configuration and AES-256 key, `root:netops` |
+| `/var/lib/axlib/credentials.db` | encrypted store, `root:netops 0660` |
+
+`AXLIB_CONFIG_FILE` is set for all logins, so operators need no configuration. An existing configuration, key, or store is never overwritten, and rerunning a newer release's installer upgrades in place; previous wheels stay in `releases/` for rollback. See `docs/INSTALL.md`.
+
+### Administrator and operator guides
+
+`docs/INSTALL.md` now has two guides:
+
+- **For administrators**: an `axuv` helper that runs uv on `/opt/shared/axlib` with the shared Python and `umask 022`; adding libraries such as netmiko and scrapli so every script can use them; pinning, upgrading, and removing libraries; tracking `pyproject.toml` and `uv.lock` in git for one-command undo; upgrades, rollback, backups, mirrors, and uninstalling. Libraries added this way survive axlib upgrades.
+- **For network operations staff**: four ways to get credentials in a script: the shared interpreter (`#!/opt/shared/axlib/.venv/bin/python`, with netmiko and scrapli examples), a personal uv project or single-file uv script using the release wheel from `/opt/shared/axlib/releases/`, or the `NET*` variables from `netenv-set`. It also covers cron and systemd (use `ax.getkeys(getpass.getuser())` where `USER` may be unset) and rules for handling credentials.
+
+Administrators should use `axuv` (or an equivalent `umask 022`) for every change to the shared environment. Running plain `uv` under a restrictive umask leaves new libraries unreadable for everyone except root, and the damage persists through reinstalls until the uv cache is cleaned. The guide's troubleshooting table gives the symptoms and the recovery steps.
+
+### Compatibility
+
+- The axlib package is unchanged from the previous release: no API, command, storage format, or dependency changes.
+- Hosts that already have axlib installed can adopt the installer by running it. An existing configuration, key, or store is kept and only verified.
+
+### Validation
+
+Validated on Python 3.14.3:
+
+```text
+Ruff format and lint (all rules, including docs code): passed
+ty static type check:                                  passed
+Educational docstring audit:                           passed
+Main pytest suite:                                     156 passed
+shellcheck install.sh:                                 passed
+install.sh on Ubuntu 24.04 (fresh, rerun, upgrade,
+  rollback, non-root operator, login autoload):        passed
+Shared libraries (netmiko, scrapli) as another user,
+  kept across an axlib upgrade:                        passed
+Personal uv project on the shared Python:              passed
+```
+
 ## 1.0.2
 
 ### Overview
@@ -34,25 +90,6 @@ The commands are also available as `axlib-netenv-set`, `axlib-netenv-clear`, and
 
 Read `docs/NETENV.md` before enabling this on a shared host. Exported passwords are visible to every program the shell starts, remain in long-running `tmux` sessions after a password change, and take precedence over the store in `ax.getkeys()`.
 
-### Shared-host installer
-
-The release tarball now contains `install.sh`, which installs axlib for every operator on a Linux host:
-
-```bash
-tar xzf axlib-<version>.tar.gz
-sudo ./axlib-<version>/install.sh            # add --with-tui and/or --with-netenv as needed
-```
-
-| Path | Contents |
-| --- | --- |
-| `/opt/shared/python` | uv-managed Python, readable by every user |
-| `/opt/shared/axlib` | uv project with a locked `.venv`, release wheels, and docs (`current/`) |
-| `/usr/local/bin/axlib` | the `axlib` command |
-| `/etc/axlib/axlib.toml`, `/etc/axlib/sqlite-aes256.key` | configuration and AES-256 key, `root:netops` |
-| `/var/lib/axlib/credentials.db` | encrypted store, `root:netops 0660` |
-
-`AXLIB_CONFIG_FILE` is set for all logins, so operators need no configuration. An existing configuration, key, or store is never overwritten, and rerunning a newer release's installer upgrades in place; previous wheels stay in `releases/` for rollback. See `docs/INSTALL.md`.
-
 ### Compatibility
 
 - No storage format or schema changes, and no migrations.
@@ -72,9 +109,6 @@ Measured source line coverage:                         82%
 Source-distribution build:                             passed
 Extracted source-distribution tests:                   156 passed
 bash eval round trip, set -x, non-interactive guard:   passed
-install.sh on Ubuntu 24.04 (fresh, rerun, upgrade,
-  rollback, non-root operator, login autoload):        passed
-shellcheck install.sh:                                 passed
 ```
 
 ## 1.0.1
