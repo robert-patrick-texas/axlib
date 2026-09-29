@@ -438,14 +438,15 @@ the shared environment yourself.
 ### Option 2: your own uv project
 
 Use your own environment when a script needs libraries or versions that
-aren't in the shared one. You get axlib from the release wheel on the server,
-and the shared Python so you don't download one of your own:
+aren't in the shared one. It uses the shared Python, so you don't download
+one of your own, and gets axlib either from the release wheel on the server
+or from PyPI:
 
 ```bash
 export UV_PYTHON_INSTALL_DIR=/opt/shared/python UV_MANAGED_PYTHON=1
 mkdir -p ~/projects/backups && cd ~/projects/backups
 uv init --bare
-uv add /opt/shared/axlib/releases/axlib-<version>-py3-none-any.whl
+uv add /opt/shared/axlib/releases/axlib-<version>-py3-none-any.whl   # or: uv add 'axlib>=1.0'
 uv add netmiko jinja2
 uv run python backup.py
 ```
@@ -457,9 +458,15 @@ Things to know:
 - The first `uv add` downloads `cryptography`, `redis`, and your libraries
   into your own cache (`~/.cache/uv`), so it needs internet access or the
   team's mirror.
-- **Use the wheel from `/opt/shared/axlib/releases/`, not `uv add axlib`.** The
-  `axlib` on PyPI is an old release without the credential stores, and it
-  cannot read the server's store.
+- **Choose where axlib comes from.** The wheel in `/opt/shared/axlib/releases/`
+  is exactly the release the server runs. `uv add 'axlib>=1.0'` installs the
+  latest release from PyPI instead. Both read the server's store. If you use
+  PyPI, keep your version in step with `axlib version` on the server. A
+  release that changes a storage format says so in its release notes.
+- **Always require `>=1.0` when installing from PyPI.** The 0.1.x releases
+  still on PyPI predate the credential stores and cannot read the server's
+  store. An internal mirror that has not synced a 1.x release would also give
+  you 0.1.x.
 - To run the script from anywhere or from cron, use the project's interpreter
   by full path: `~/projects/backups/.venv/bin/python ~/projects/backups/backup.py`,
   or `uv run --project ~/projects/backups python ~/projects/backups/backup.py`.
@@ -488,6 +495,9 @@ from scrapli import Scrapli
 
 Run it with `./script.py`. It works from any directory and needs internet
 access the first time you run it.
+
+To take axlib from PyPI instead of the server's wheel, list
+`"axlib>=1.0"` in `dependencies` and leave out the `[tool.uv.sources]` lines.
 
 ### Option 4: credentials without importing axlib
 
@@ -580,4 +590,4 @@ your project.
 | `ModuleNotFoundError: No module named 'netmiko'` (or another library) | The library is not in the environment the script runs in. For the shared environment, ask an administrator to `axuv add` it. For your own project, run `uv add` in the project. |
 | A library works for root, but other users get `cannot import name ... (unknown location)`, `PermissionError`, or `ModuleNotFoundError` | It was installed by plain `uv` under a restrictive umask. Python treats the unreadable directory as an empty namespace package, which produces these errors. The same restrictive modes are also in root's uv cache, so clear the cache before reinstalling: `axuv cache clean <name> <its-dependencies>` then `axuv sync --reinstall-package <name>`. To reset everything, run `axuv cache clean && axuv sync --reinstall` (this downloads all packages again). |
 | A cron job gets the shared account or no credentials | cron did not set `USER`. Use `ax.getkeys(getpass.getuser())` (see [Scheduled jobs](#scheduled-jobs-cron-and-systemd)). |
-| `uv add axlib` installs an old release without credential stores | That is the old PyPI package. Add the wheel from `/opt/shared/axlib/releases/` instead. |
+| `AttributeError: module 'axlib' has no attribute 'getkeys'` or `No module named 'axlib.credentials'` in your own project | The project has a 0.1.x release, which contains only the text filters and none of the credential code. It comes from PyPI or an internal mirror without a 1.x release. Check with `uv run python -c "import importlib.metadata as m; print(m.version('axlib'))"`, then run `uv add 'axlib>=1.0'` or add the wheel from `/opt/shared/axlib/releases/`. |

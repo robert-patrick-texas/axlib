@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `docs/INSTALL.md`: axlib is now published on PyPI, so operators' own projects and uv scripts may use `axlib>=1.0` from PyPI as well as the server's release wheel. The guide explains that the 0.1.x releases on PyPI (or an unsynced mirror) lack the credential stores, and how to recognize and fix that.
+
 ## 1.0.3 - 2026-09-29
 
 - Added `install.sh` to the release tarball. Run as root from an unpacked release, it installs a uv-managed Python in `/opt/shared/python` and axlib as a locked uv project in `/opt/shared/axlib`, and links `/usr/local/bin/axlib`. It creates `/etc/axlib` and `/var/lib/axlib` for the `netops` group, writes a minimal `axlib.toml` only if none exists, sets `AXLIB_CONFIG_FILE` in `/etc/environment` and `/etc/profile.d`, and creates or verifies the SQLite store without ever replacing a key. Options include `--with-tui`, `--with-netenv`, and custom paths. Rerunning it upgrades in place.
