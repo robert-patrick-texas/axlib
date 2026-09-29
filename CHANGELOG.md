@@ -6,6 +6,8 @@
 - Added uv inline-metadata scripts `scripts/netenv-set` and `scripts/netenv-clear` that run from any directory without an activated environment.
 - Added `examples/netenv/netenv.sh`, bash/zsh integration that defines `netenv-set`/`netenv-clear` shell functions and loads credentials in interactive shells only.
 - Added `docs/NETENV.md`.
+- Added `install.sh` to the release tarball. Run as root from an unpacked release, it installs a uv-managed Python in `/opt/shared/python` and axlib as a locked uv project in `/opt/shared/axlib`, and links `/usr/local/bin/axlib`. It creates `/etc/axlib` and `/var/lib/axlib` for the `netops` group, writes a minimal `axlib.toml` only if none exists, sets `AXLIB_CONFIG_FILE` in `/etc/environment` and `/etc/profile.d`, and creates or verifies the SQLite store without ever replacing a key. Options include `--with-tui`, `--with-netenv`, and custom paths. Rerunning it upgrades in place.
+- Added `docs/INSTALL.md`.
 
 ## 1.0.1 - 2026-09-26
 

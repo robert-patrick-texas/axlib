@@ -31,6 +31,15 @@ Add the optional full-screen credential manager as well:
 uv add 'axlib[tui]'
 ```
 
+To install axlib for every operator on a shared Linux host (a shared Python in `/opt/shared/python`, axlib in `/opt/shared/axlib`, and a ready `netops` credential store), unpack a release tarball and run its installer:
+
+```bash
+tar xzf axlib-<version>.tar.gz
+sudo ./axlib-<version>/install.sh
+```
+
+See `docs/INSTALL.md` for options, upgrades, rollback, and backups.
+
 Runtime dependencies are limited to `cryptography` and `redis`. Redis is imported only when caching is enabled. The optional `tui` extra adds `textual` and `rich`.
 
 ## Existing automation API
@@ -143,6 +152,7 @@ See `docs/TEXT_FILTERS.md` for filter semantics.
 
 ## Documentation
 
+- `docs/INSTALL.md` — shared-host installation with `install.sh`: layout, options, upgrades, rollback, backups.
 - `docs/CREDENTIALS.md` — lookup precedence, configuration, CLI, administration API, and permissions.
 - `docs/CREDENTIAL_TUI.md` — operator guide for the optional full-screen credential manager.
 - `docs/NETENV.md` — loading credentials into SSH sessions with `netenv-set` / `netenv-clear`: setup, warnings, and troubleshooting.

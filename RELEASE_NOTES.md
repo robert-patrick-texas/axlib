@@ -34,6 +34,25 @@ The commands are also available as `axlib-netenv-set`, `axlib-netenv-clear`, and
 
 Read `docs/NETENV.md` before enabling this on a shared host. Exported passwords are visible to every program the shell starts, remain in long-running `tmux` sessions after a password change, and take precedence over the store in `ax.getkeys()`.
 
+### Shared-host installer
+
+The release tarball now contains `install.sh`, which installs axlib for every operator on a Linux host:
+
+```bash
+tar xzf axlib-<version>.tar.gz
+sudo ./axlib-<version>/install.sh            # add --with-tui and/or --with-netenv as needed
+```
+
+| Path | Contents |
+| --- | --- |
+| `/opt/shared/python` | uv-managed Python, readable by every user |
+| `/opt/shared/axlib` | uv project with a locked `.venv`, release wheels, and docs (`current/`) |
+| `/usr/local/bin/axlib` | the `axlib` command |
+| `/etc/axlib/axlib.toml`, `/etc/axlib/sqlite-aes256.key` | configuration and AES-256 key, `root:netops` |
+| `/var/lib/axlib/credentials.db` | encrypted store, `root:netops 0660` |
+
+`AXLIB_CONFIG_FILE` is set for all logins, so operators need no configuration. An existing configuration, key, or store is never overwritten, and rerunning a newer release's installer upgrades in place; previous wheels stay in `releases/` for rollback. See `docs/INSTALL.md`.
+
 ### Compatibility
 
 - No storage format or schema changes, and no migrations.
@@ -53,6 +72,9 @@ Measured source line coverage:                         82%
 Source-distribution build:                             passed
 Extracted source-distribution tests:                   156 passed
 bash eval round trip, set -x, non-interactive guard:   passed
+install.sh on Ubuntu 24.04 (fresh, rerun, upgrade,
+  rollback, non-root operator, login autoload):        passed
+shellcheck install.sh:                                 passed
 ```
 
 ## 1.0.1
