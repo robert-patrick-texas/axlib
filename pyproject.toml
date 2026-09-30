@@ -1,6 +1,6 @@
 [project]
 name = "axlib"
-version = "1.0.3"
+version = "1.0.4"
 description = "Educational Python tools and library helpers for Network Operations automation"
 readme = "README.md"
 requires-python = ">=3.11"

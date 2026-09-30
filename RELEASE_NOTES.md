@@ -2,6 +2,69 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.4
+
+### Overview
+
+This release makes a shared host easier to run after the first install. `install.sh` records its options and reuses them, so upgrades need no options. The `axuv` helper becomes an installed command, `/usr/local/sbin/axuv`. The `axlib` command and `ax.getkeys()` scripts find the host's configuration without `AXLIB_CONFIG_FILE`. Storage formats are unchanged.
+
+### Recorded installer options
+
+Every run of `install.sh` writes its options to `/etc/axlib/install.env`, and the next run starts from them:
+
+```bash
+sudo ./axlib-1.0.4/install.sh               # an upgrade: no options needed
+sudo ./axlib-1.0.4/install.sh --help        # shows the defaults the next run would use
+```
+
+New options turn earlier choices back off: `--no-tui`, `--no-netenv`, and `--store` (the opposite of `--no-store`). `--sbin-dir` chooses where `axuv` is installed. On a host installed by 1.0.3, which wrote no record, the first 1.0.4 run keeps the TUI and the netenv login snippet as they are unless told otherwise.
+
+### The `axuv` command
+
+`/usr/local/sbin/axuv` replaces the shell function that administrators added to root's `~/.bashrc`. `sudo axuv <uv arguments>` runs uv on the shared environment with `umask 022` and the shared Python, taking the paths from the install record, and it refuses to run as anyone but root:
+
+```bash
+sudo axuv add netmiko scrapli
+sudo axuv lock --upgrade && sudo axuv sync
+```
+
+An existing `axuv` function in root's `~/.bashrc` takes precedence over the command in interactive root shells. It still works, but removing it lets the installed command follow future changes.
+
+### Default configuration file
+
+axlib now selects its TOML file from `--config`, then `AXLIB_CONFIG_FILE`, then the `CONFIG_FILE` in `/etc/axlib/install.env`. On an installed host, `sudo axlib credential-db add ...` works without `-E` or an `export`, and cron jobs and systemd units need no `AXLIB_CONFIG_FILE`. `axlib.credentials.default_config_file()` returns the selected file, and every `--config` help text states the order. Users who cannot read `/etc/axlib` see no change.
+
+### Fixes
+
+- `--no-tui` removes the credential manager's packages from the shared environment. In 1.0.3, leaving out `--with-tui` was documented to remove the TUI but did not, because `uv add` keeps an existing extra and never uninstalls packages.
+- Rerunning the installer with a different `--config-dir` now replaces `AXLIB_CONFIG_FILE` in `/etc/environment` instead of keeping the old path.
+
+### Compatibility
+
+- On a host with `/etc/axlib/install.env`, a program that previously ran without any configuration file now reads the recorded `axlib.toml`. Set `AXLIB_CONFIG_FILE` or pass `--config` to choose a different file.
+- A 1.0.3 host upgrades in place with `sudo ./axlib-1.0.4/install.sh`. Its configuration, key, store, records, and added libraries are kept.
+- Mirror settings for offline hosts belong in `/etc/uv/uv.toml`, which every uv run reads, instead of the old `axuv` function.
+- No storage format, dependency, or `ax.getkeys()` precedence changes.
+
+### Validation
+
+Validated on Python 3.14.3:
+
+```text
+Ruff format and lint (all rules, including docs code): passed
+ty static type check:                                  passed
+Educational docstring audit:                           passed
+Main pytest suite:                                     168 passed
+shellcheck install.sh, scripts/axuv:                   passed
+install.sh on Ubuntu 24.04 (fresh, rerun without
+  options, --no-tui/--no-netenv, --config-dir change,
+  axuv under umask 077, non-root refusal):             passed
+Upgrade from a 1.0.3 install with TUI, netenv, and a
+  shared library; rollback to 1.0.3 with axuv:         passed
+Configuration default as root, a netops operator,
+  and a user outside netops:                           passed
+```
+
 ## 1.0.3
 
 ### Overview

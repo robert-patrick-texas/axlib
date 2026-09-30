@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.4 - 2026-09-29
 
 - `install.sh` records its options in `/etc/axlib/install.env`, and every later run starts from them, so `sudo ./install.sh` upgrades a host exactly as it was installed. New options `--no-tui`, `--no-netenv`, `--store`, and `--sbin-dir` undo `--with-tui`, `--with-netenv`, and `--no-store`, or choose where `axuv` goes. `--no-tui` now removes the TUI packages from `.venv`; before, `uv add` kept the extra. On a host installed by 1.0.3, a run without these options keeps the TUI and netenv choices it already has. A changed `--config-dir` now also updates `AXLIB_CONFIG_FILE` in `/etc/environment`.
 - `install.sh` installs `/usr/local/sbin/axuv` (from `scripts/axuv`), which replaces the shell function in `docs/INSTALL.md`. It runs uv as root on the shared environment with `umask 022` and the shared Python, taking the paths from the install record.
