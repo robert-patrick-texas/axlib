@@ -48,6 +48,14 @@ group = "netops"
 enforce_permissions = true
 ```
 
+axlib reads one TOML file and never searches directories for it. It uses the first of:
+
+1. the file passed to `load_settings(path)` or to a command's `--config`,
+2. the file named by `AXLIB_CONFIG_FILE`,
+3. `CONFIG_FILE` in `/etc/axlib/install.env`, which `install.sh` writes on a shared host (see `docs/INSTALL.md`).
+
+`axlib.credentials.default_config_file()` returns the file that steps 2 and 3 select. With no file, settings come from `AXLIB_*` variables and built-in defaults alone.
+
 Relative `credential_file.file`, `credential_file.key_file`, `sqlite.database`, and `sqlite.key_file` values are resolved relative to the selected TOML file. Direct AES keys are never loaded from TOML.
 
 Important environment variables include `AXLIB_CONFIG_FILE`, `AXLIB_SHARED_SERVICE`, `AXLIB_CREDENTIAL_FILE_ENABLE`, `AXLIB_CREDENTIAL_FILE`, `AXLIB_CREDENTIAL_FILE_KEY_FILE`, `AXLIB_CREDENTIAL_FILE_KEY`, `AXLIB_SQLITE_ENABLE`, `AXLIB_SQLITE_DATABASE`, `AXLIB_SQLITE_KEY_FILE`, and `AXLIB_SQLITE_KEY`.

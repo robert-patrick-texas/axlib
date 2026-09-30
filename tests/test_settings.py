@@ -10,9 +10,16 @@ from pathlib import Path
 import pytest
 
 import axlib.config as legacy_config
+from axlib.credentials import settings as settings_module
 from axlib.credentials.exceptions import CredentialConfigurationError
 from axlib.credentials.providers import RedisCredentialCache
-from axlib.credentials.settings import load_settings, parse_boolean, parse_file_mode
+from axlib.credentials.settings import (
+    default_config_file,
+    installed_config_file,
+    load_settings,
+    parse_boolean,
+    parse_file_mode,
+)
 
 
 def test_toml_and_environment_precedence(tmp_path: Path) -> None:
@@ -205,3 +212,71 @@ def test_parse_file_mode_rejects_world_or_executable_access(value: object) -> No
             default=0o600,
             require_owner_write=True,
         )
+
+
+def _write_record(directory: Path, body: str) -> Path:
+    """Write an install.sh-style record and return its path."""
+    record = directory / "install.env"
+    record.write_text(body, encoding="utf-8")
+    return record
+
+
+def test_installed_config_file_reads_the_shell_record(tmp_path: Path) -> None:
+    record = _write_record(
+        tmp_path,
+        "# Written by axlib install.sh\n"
+        "PREFIX='/opt/shared/axlib'\n"
+        "CONFIG_FILE='/srv/axlib old/axlib.toml'\n"
+        "CONFIG_FILE='/srv/axlib/axlib.toml'  # the last assignment wins\n",
+    )
+
+    assert installed_config_file(record) == Path("/srv/axlib/axlib.toml")
+
+
+@pytest.mark.parametrize("body", ["PREFIX='/opt/shared/axlib'\n", "CONFIG_FILE=''\n"])
+def test_installed_config_file_without_a_value_is_none(
+    tmp_path: Path, body: str
+) -> None:
+    assert installed_config_file(_write_record(tmp_path, body)) is None
+
+
+def test_missing_or_unreadable_record_is_none(tmp_path: Path) -> None:
+    assert installed_config_file(tmp_path / "missing.env") is None
+    assert installed_config_file(tmp_path) is None  # a directory cannot be read
+
+
+def test_malformed_record_is_a_configuration_error(tmp_path: Path) -> None:
+    record = _write_record(tmp_path, "CONFIG_FILE='/etc/axlib/axlib.toml\n")
+
+    with pytest.raises(CredentialConfigurationError, match="install record"):
+        installed_config_file(record)
+
+
+def test_config_file_lookup_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorded = tmp_path / "recorded.toml"
+    recorded.write_text('[credentials]\nshared_service = "recorded"\n')
+    from_env = tmp_path / "from-env.toml"
+    from_env.write_text('[credentials]\nshared_service = "from-env"\n')
+    explicit = tmp_path / "explicit.toml"
+    explicit.write_text('[credentials]\nshared_service = "explicit"\n')
+    record = _write_record(tmp_path, f"CONFIG_FILE='{recorded}'\n")
+    monkeypatch.setattr(settings_module, "INSTALL_RECORD", record)
+    environment = {"AXLIB_CONFIG_FILE": str(from_env)}
+
+    assert default_config_file({}) == recorded
+    assert default_config_file(environment) == from_env
+    assert load_settings(environ={}).shared_service == "recorded"
+    assert load_settings(environ=environment).shared_service == "from-env"
+    assert load_settings(explicit, environ=environment).shared_service == "explicit"
+
+
+def test_recorded_config_file_that_is_missing_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = _write_record(tmp_path, f"CONFIG_FILE='{tmp_path / 'gone.toml'}'\n")
+    monkeypatch.setattr(settings_module, "INSTALL_RECORD", record)
+
+    with pytest.raises(CredentialConfigurationError):
+        load_settings(environ={})

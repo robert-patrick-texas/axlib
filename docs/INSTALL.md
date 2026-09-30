@@ -17,8 +17,7 @@ sudo ./axlib-<version>/install.sh
 
 # 3. Give operators access and a record each
 sudo usermod -aG netops alice
-export AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml     # new logins get this automatically
-sudo -E axlib credential-db add --service alice --set netuser=alice --prompt netpass --prompt netenable
+sudo axlib credential-db add --service alice --set netuser=alice --prompt netpass --prompt netenable
 ```
 
 When alice next logs in, `axlib credentials network` reports `netuser=set` and
@@ -33,8 +32,10 @@ When alice next logs in, `axlib credentials network` reports `netuser=set` and
 | `/opt/shared/axlib/releases/` | Each release's wheel plus its unpacked docs, examples, and `install.sh` | `root`, world-readable |
 | `/opt/shared/axlib/current` | Symlink to the installed release's files | |
 | `/usr/local/bin/axlib` | Symlink to `/opt/shared/axlib/.venv/bin/axlib` | |
+| `/usr/local/sbin/axuv` | uv, pointed at the shared environment (see [The `axuv` command](#the-axuv-command)) | `root`, `0755` |
 | `/etc/axlib/` | Configuration and AES-256 key | `root:netops 2750` |
 | `/etc/axlib/axlib.toml` | Configuration (no secrets) | `root:netops 0640` |
+| `/etc/axlib/install.env` | The installer's options (see [Recorded options](#recorded-options)) | `root:root 0644` |
 | `/etc/axlib/sqlite-aes256.key` | Store encryption key | `root:netops 0640` |
 | `/var/lib/axlib/` | Credential database directory | `root:netops 2770` |
 | `/var/lib/axlib/credentials.db` | Encrypted SQLite credential store | `root:netops 0660` |
@@ -42,8 +43,14 @@ When alice next logs in, `axlib credentials network` reports `netuser=set` and
 | `/etc/profile.d/axlib-config.sh` | Exports `AXLIB_CONFIG_FILE` if it is still unset | `0644` |
 | `/etc/profile.d/axlib-netenv.sh` | Only with `--with-netenv` | `0644` |
 
-axlib never searches for a configuration file, so `AXLIB_CONFIG_FILE` is the
-one setting every user needs. The installer sets it in two places.
+axlib never searches directories for a configuration file. It uses the file
+given with `--config`, else the one named by `AXLIB_CONFIG_FILE`, else the
+`CONFIG_FILE` in `/etc/axlib/install.env`. The last step means the `axlib`
+command and `ax.getkeys()` scripts find `/etc/axlib/axlib.toml` everywhere on
+this host: under `sudo` without `-E`, in cron, and in systemd services.
+
+The installer also sets `AXLIB_CONFIG_FILE` for every login, so programs and
+shell snippets that read the variable directly see it too.
 `/etc/environment` is read through PAM for SSH logins and, on most
 distributions, for cron jobs. `/etc/profile.d/axlib-config.sh` covers login
 shells on hosts where sshd does not use PAM.
@@ -79,19 +86,62 @@ sudo ./install.sh [options]
 | `--python VERSION` | `3.14` | Python version (3.11 or newer) |
 | `--group NAME` | `netops` | Group allowed to use the store; created if missing |
 | `--bin-dir DIR` | `/usr/local/bin` | Where the `axlib` command is linked |
+| `--sbin-dir DIR` | `/usr/local/sbin` | Where the `axuv` command is copied |
 | `--config-dir DIR` | `/etc/axlib` | Configuration and key directory |
 | `--data-dir DIR` | `/var/lib/axlib` | Database directory |
-| `--with-tui` | off | Also install the full-screen credential manager (`axlib credential-tui`) |
-| `--with-netenv` | off | Export `NETUSER`/`NETPASS`/`NETENABLE` in every interactive login. Read `docs/NETENV.md` first. |
-| `--no-store` | off | Skip creating the SQLite store and key, for example when using Redis or the text store instead |
+| `--with-tui` / `--no-tui` | off | Install or remove the full-screen credential manager (`axlib credential-tui`) |
+| `--with-netenv` / `--no-netenv` | off | Install or remove the login snippet that exports `NETUSER`/`NETPASS`/`NETENABLE` in every interactive login. Read `docs/NETENV.md` first. |
+| `--no-store` / `--store` | store on | Skip, or go back to, creating and verifying the SQLite store and key. Skip it when using Redis or the text store instead. |
+
+The defaults in this table apply to the first install. Every later run starts
+from the options of the run before it (see [Recorded options](#recorded-options)),
+so options are only needed to change something.
 
 `--with-netenv` is off by default because it puts every operator's password
 in the environment of every program they start. That is a policy decision
 for the host owner, not an installer default.
 
+### Recorded options
+
+Every run writes its options to `/etc/axlib/install.env`. The file is always
+at this path, whatever `--config-dir` says, because it is how the next run
+finds the options of this one:
+
+```bash
+PREFIX='/opt/shared/axlib'
+PYTHON_DIR='/opt/shared/python'
+PYTHON_VERSION='3.14'
+GROUP='netops'
+BIN_DIR='/usr/local/bin'
+SBIN_DIR='/usr/local/sbin'
+CONFIG_DIR='/etc/axlib'
+DATA_DIR='/var/lib/axlib'
+CONFIG_FILE='/etc/axlib/axlib.toml'
+WITH_TUI='1'
+WITH_NETENV='0'
+CREATE_STORE='1'
+UV_BIN='/usr/local/bin/uv'
+```
+
+Three programs read it:
+
+- `install.sh` uses it as its defaults, so `sudo ./install.sh` with no options
+  upgrades a host exactly as it was installed. `./install.sh --help` shows
+  the defaults the next run would use.
+- `axuv` takes the environment's location and the shared Python from it.
+- The `axlib` command and `ax.getkeys()` use `CONFIG_FILE` when neither
+  `--config` nor `AXLIB_CONFIG_FILE` names a configuration file.
+
+To change an option, run the installer again with the new option rather than
+editing the file. On a host installed by an older installer that wrote no
+record, the first run without `--with-tui`/`--no-tui` or
+`--with-netenv`/`--no-netenv` keeps the TUI and the login snippet as they are.
+
 ## What the installer does
 
-1. Checks that it runs as root from an unpacked axlib release, and finds `uv`.
+1. Reads the options of the previous run from `/etc/axlib/install.env`, if
+   it exists. Then it checks that it runs as root from an unpacked axlib
+   release, and finds `uv`.
 2. Creates the `netops` group if it does not exist.
 3. Installs Python into `/opt/shared/python`. It sets
    `UV_PYTHON_INSTALL_DIR` and `UV_MANAGED_PYTHON=1` so uv cannot pick an
@@ -100,10 +150,11 @@ for the host owner, not an installer default.
 4. Copies the release to `/opt/shared/axlib/releases/axlib-<version>/`, builds
    its wheel, and adds the wheel to the `/opt/shared/axlib` uv project with
    `uv add`. `uv.lock` records the exact versions installed.
-5. Links `/usr/local/bin/axlib`.
+5. Links `/usr/local/bin/axlib` and copies `axuv` to `/usr/local/sbin`.
 6. Creates `/etc/axlib` and `/var/lib/axlib`, and writes `axlib.toml` **only
    if it does not already exist**.
-7. Sets `AXLIB_CONFIG_FILE` for all logins.
+7. Records its options in `/etc/axlib/install.env`, and sets
+   `AXLIB_CONFIG_FILE` for all logins.
 8. Runs `axlib credential-db init --generate-key` for a new store. For an
    existing store it runs `axlib credential-db init`, which only verifies it.
    **An existing key is never replaced.**
@@ -135,22 +186,16 @@ root and read-only for everyone else. Operators use what you install but
 cannot change it. `/opt/shared/axlib/pyproject.toml` and `uv.lock` are the
 complete, exact record of what is installed.
 
-### The `axuv` helper
+### The `axuv` command
 
 Every uv command in `/opt/shared/axlib` must run as root with the same
-settings as `install.sh`. Add this function to root's `~/.bashrc`, or paste it
-into a `sudo -i` shell:
+settings as `install.sh`. The installer puts `axuv` in `/usr/local/sbin` to do
+exactly that: `sudo axuv <uv arguments>` is `uv <uv arguments>` run on the
+shared environment. It reads the paths from `/etc/axlib/install.env`, so it
+works however axlib was installed, and it refuses to run as anyone but root.
 
-```bash
-# uv, pointed at the shared axlib environment
-axuv() {
-    ( umask 022
-      export UV_PYTHON_INSTALL_DIR=/opt/shared/python UV_MANAGED_PYTHON=1
-      uv --directory /opt/shared/axlib "$@" )
-}
-```
-
-Each part prevents a specific failure:
+Before starting uv, `axuv` sets up three things, and each one prevents a
+specific failure:
 
 - `UV_PYTHON_INSTALL_DIR` and `UV_MANAGED_PYTHON=1` keep uv on the shared
   Python. Without them uv may rebuild `.venv` on an interpreter under root's
@@ -161,15 +206,15 @@ Each part prevents a specific failure:
   installed files from root's uv cache, so the cached copies keep the
   restrictive mode, and simply reinstalling does not fix it (see
   Troubleshooting).
-- `--directory` lets you run `axuv` from any directory.
+- `--directory` runs uv in the axlib project, whatever the current directory.
 
-The examples below assume a root shell with `axuv` defined.
+The examples below run in a root shell (`sudo -i`). From your own account,
+put `sudo` in front of each `axuv`.
 
 ### Onboarding operators
 
 ```bash
 usermod -aG netops alice                  # applies from alice's next login
-export AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml
 axlib credential-db add --service alice --set netuser=alice --prompt netpass --prompt netenable
 /opt/shared/axlib/.venv/bin/python -m axlib.credentials.admin    # store health check
 ```
@@ -258,12 +303,13 @@ longer listed.
 
 ### Upgrading axlib
 
-Unpack the new release and run its installer **with the same options as
-before**. For example, leaving out `--with-tui` removes the TUI extra.
+Unpack the new release and run its installer. No options are needed: it
+starts from the options recorded by the previous run (see
+[Recorded options](#recorded-options)).
 
 ```bash
 tar xzf axlib-<new-version>.tar.gz
-sudo ./axlib-<new-version>/install.sh --with-tui
+sudo ./axlib-<new-version>/install.sh
 ```
 
 The configuration, key, database, records, and the libraries you added are
@@ -298,8 +344,7 @@ database backup. Without the key, the database cannot be decrypted, and
 there is no recovery. Anyone with both files can read every credential.
 
 To replace the key periodically, run
-`axlib credential-db rotate-key --generate-key --yes` (with
-`AXLIB_CONFIG_FILE` set). It re-encrypts every record and replaces the key
+`sudo axlib credential-db rotate-key --generate-key --yes`. It re-encrypts every record and replaces the key
 file only after the database is updated.
 
 The environment itself doesn't need a backup: `pyproject.toml`, `uv.lock`,
@@ -308,15 +353,17 @@ and the wheels in `releases/` are enough to rebuild it.
 ### Offline hosts
 
 Installing and adding libraries download packages. On a host without internet
-access, point uv at internal mirrors, both for `install.sh` and in `axuv`:
+access, point uv at internal mirrors in uv's system-wide configuration file,
+`/etc/uv/uv.toml`. Every uv run on the host reads it, including `install.sh`,
+`axuv`, and operators' own projects:
 
-```bash
-sudo env UV_DEFAULT_INDEX=https://pypi.example.internal/simple \
-         UV_PYTHON_INSTALL_MIRROR=https://mirror.example.internal/python-build-standalone \
-         ./axlib-<version>/install.sh
+```toml
+# /etc/uv/uv.toml
+python-install-mirror = "https://mirror.example.internal/python-build-standalone"
 
-# in axuv, next to the other exports:
-export UV_DEFAULT_INDEX=https://pypi.example.internal/simple
+[[index]]
+url = "https://pypi.example.internal/simple"
+default = true
 ```
 
 The installer has no fully offline mode.
@@ -329,10 +376,12 @@ path.
 ### Uninstalling
 
 ```bash
-sudo rm -f /usr/local/bin/axlib /etc/profile.d/axlib-config.sh /etc/profile.d/axlib-netenv.sh
+sudo rm -f /usr/local/bin/axlib /usr/local/sbin/axuv
+sudo rm -f /etc/profile.d/axlib-config.sh /etc/profile.d/axlib-netenv.sh
 sudo sed -i '/^AXLIB_CONFIG_FILE=/d' /etc/environment
 sudo rm -rf /opt/shared/axlib
 sudo rm -rf /opt/shared/python          # only if nothing else uses it
+sudo rm -f /etc/axlib/install.env       # or keep it: a reinstall then reuses its options
 # Credentials: remove only after you have exported or no longer need them.
 # sudo rm -rf /etc/axlib /var/lib/axlib
 ```
@@ -360,7 +409,7 @@ your shell history.
    If it says `missing` for `netuser` or `netpass`, add or update your record:
    `axlib credential-db add --service "$USER" --set netuser="$USER" --prompt netpass --prompt netenable`,
    or use `axlib credential-tui`.
-3. Nothing else. `AXLIB_CONFIG_FILE` is set for you at login.
+3. Nothing else. axlib finds the host's configuration by itself.
 
 `ax.getkeys()` looks up the record named by `$USER` and returns
 `(netuser, netpass, netenable)`. `netenable` is `None` when you have no enable
@@ -521,10 +570,10 @@ variables keep the old value until you run `netenv-set` again.
 
 ### Scheduled jobs (cron and systemd)
 
-Scheduled jobs don't start a login shell, so set what they need explicitly:
+Scheduled jobs don't start a login shell. axlib still finds the host's
+configuration (through `/etc/axlib/install.env`), but other settings need care:
 
 ```cron
-AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml
 # m  h  dom mon dow  command
 15   2  *   *   *    /home/alice/jobs/backup_configs.py >> /home/alice/jobs/backup.log 2>&1
 ```
@@ -543,8 +592,7 @@ AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml
   finally the account database.
 - Use full paths for the interpreter and every file, because cron's working
   directory and `PATH` are minimal.
-- For a systemd service, set `User=` and `Environment=AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml`
-  in the unit.
+- For a systemd service, set `User=` in the unit to an operator in `netops`.
 
 ### Rules for credentials in scripts
 
@@ -582,11 +630,11 @@ your project.
 | --- | --- |
 | `install.sh: error: run as root` | Run with `sudo`. |
 | `install.sh: error: uv was not found` | `sudo` resets `PATH`. Install uv into `/usr/local/bin` (step 1), or run `sudo UV=$(command -v uv) ./install.sh`. |
-| `No SQLite encryption key is configured` when adding a record | `AXLIB_CONFIG_FILE` is not set in the current shell. Run `export AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml`, and use `sudo -E` to pass it through sudo, or log in again. |
+| `No SQLite encryption key is configured` when adding a record | No configuration file was found. `AXLIB_CONFIG_FILE` points at a file without a `[sqlite]` section, or `/etc/axlib/install.env` is missing or unreadable (the user is not in `netops`). Check with `id` and `ls -l /etc/axlib`, or pass `--config /etc/axlib/axlib.toml`. |
 | `Permission denied` on the key or database for an operator | The user is not in `netops` yet, or has not logged in again since being added. Check with `id`. |
 | `axlib: command not found` | `/usr/local/bin` is not on `PATH`, or the symlink was removed. Run `/opt/shared/axlib/.venv/bin/axlib` directly. |
 | `bad interpreter` / `No such file or directory` running `axlib` | `/opt/shared/python` or `/opt/shared/axlib` was moved, renamed, or deleted. Reinstall to the original paths. |
-| Cron jobs cannot find credentials | This distribution's cron does not read `/etc/environment`. Add `AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml` at the top of the crontab. |
+| `axuv: error: /etc/axlib/install.env not found` | axlib was installed by an older installer that wrote no record, or the record was deleted. Run the installer again with the options you used. |
 | Health check shows `file ... not-configured` | Expected. Only the SQLite store is enabled by default. |
 | `ModuleNotFoundError: No module named 'netmiko'` (or another library) | The library is not in the environment the script runs in. For the shared environment, ask an administrator to `axuv add` it. For your own project, run `uv add` in the project. |
 | A library works for root, but other users get `cannot import name ... (unknown location)`, `PermissionError`, or `ModuleNotFoundError` | It was installed by plain `uv` under a restrictive umask. Python treats the unreadable directory as an empty namespace package, which produces these errors. The same restrictive modes are also in root's uv cache, so clear the cache before reinstalling: `axuv cache clean <name> <its-dependencies>` then `axuv sync --reinstall-package <name>`. To reset everything, run `axuv cache clean && axuv sync --reinstall` (this downloads all packages again). |

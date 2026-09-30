@@ -64,7 +64,7 @@ from .manager import (
     stderr_reporter,
 )
 from .profiles import NETWORK_PROFILE, missing_required
-from .settings import CredentialSettings, load_settings
+from .settings import CONFIG_OPTION_HELP, CredentialSettings, load_settings
 
 # Each network-profile field is exported under its upper-case name
 # (netuser -> NETUSER).  Deriving the mapping from the profile keeps a single
@@ -320,7 +320,7 @@ def build_set_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        help="axlib TOML file (default: $AXLIB_CONFIG_FILE).",
+        help=CONFIG_OPTION_HELP,
     )
     parser.add_argument(
         "--service",

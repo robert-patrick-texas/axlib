@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Copyright 2026 Robert Patrick
+# SPDX-License-Identifier: Apache-2.0
+#
+# axuv: run uv on the shared axlib environment with the installer's settings.
+#
+#   sudo axuv add netmiko scrapli        # a library for every operator's scripts
+#   sudo axuv tree --depth 1             # what is installed
+#   sudo axuv lock --upgrade && sudo axuv sync
+#
+# install.sh copies this file to /usr/local/sbin/axuv.  The paths come from
+# /etc/axlib/install.env, which install.sh writes, so axuv always works on the
+# environment the installer built even when it used non-default options.
+# See "The axuv command" in docs/INSTALL.md.
+
+set -euo pipefail
+
+INSTALL_RECORD=/etc/axlib/install.env
+
+die() { printf 'axuv: error: %s\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || die "run as root (sudo axuv $*); the shared environment belongs to root."
+[ -r "$INSTALL_RECORD" ] || die "$INSTALL_RECORD not found; install axlib with install.sh first."
+
+# The record sets PREFIX, PYTHON_DIR, UV_BIN, and the installer's other options.
+# shellcheck source=/dev/null
+. "$INSTALL_RECORD"
+
+# Each setting below prevents a failure that only other users would see:
+# - umask 022 keeps new files world-readable when root's own umask is stricter.
+#   A library installed under umask 077 is unreadable to every operator, and
+#   uv's cache keeps the bad modes, so even a reinstall does not repair it.
+# - UV_PYTHON_INSTALL_DIR and UV_MANAGED_PYTHON keep uv on the shared Python
+#   instead of an interpreter under root's home directory.
+umask 022
+export UV_PYTHON_INSTALL_DIR=$PYTHON_DIR UV_MANAGED_PYTHON=1
+
+# UV in the environment wins, then the uv install.sh used, then uv on PATH.
+if [ -z "${UV:-}" ]; then
+    if [ -x "${UV_BIN:-}" ]; then
+        UV=$UV_BIN
+    else
+        UV=$(command -v uv) || die "uv was not found; pass its location: sudo UV=/path/to/uv axuv ..."
+    fi
+fi
+
+exec "$UV" --directory "$PREFIX" "$@"

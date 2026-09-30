@@ -12,6 +12,17 @@ from pathlib import Path
 import pytest
 
 from axlib.credentials import CredentialSettings, load_settings
+from axlib.credentials import settings as settings_module
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Hide any real install.sh record before test modules are imported.
+
+    ``axlib.config`` loads settings when it is first imported, so this runs as
+    a configure hook (before collection) rather than as a fixture.  Tests of
+    the record itself point ``INSTALL_RECORD`` at their own temporary file.
+    """
+    settings_module.INSTALL_RECORD = Path("/nonexistent/axlib-tests/install.env")
 
 
 def write_store_config(

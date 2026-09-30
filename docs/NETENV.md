@@ -174,7 +174,7 @@ Settings read by the snippet:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `AXLIB_CONFIG_FILE` | none | The `axlib.toml` that enables your stores. **Required** unless each store is enabled with `AXLIB_*` variables. |
+| `AXLIB_CONFIG_FILE` | the file recorded by `install.sh` | The `axlib.toml` that enables your stores. **Required** unless axlib was installed with `install.sh` (which records the file in `/etc/axlib/install.env`) or each store is enabled with `AXLIB_*` variables. |
 | `AXLIB_NETENV_SCRIPTS` | unset | Directory containing the uv scripts. When unset, the installed `axlib` command is used. |
 | `AXLIB_NETENV_AUTOLOAD` | `1` | Set to `0` to define the functions without loading credentials at login. |
 
@@ -198,7 +198,7 @@ Notes on the snippet:
 
 | Option | Effect |
 | --- | --- |
-| `--config PATH` | Use this `axlib.toml` instead of `$AXLIB_CONFIG_FILE`. |
+| `--config PATH` | Use this `axlib.toml` instead of `$AXLIB_CONFIG_FILE` or the one recorded by `install.sh`. |
 | `--service NAME` | Load this record instead of the one named by `$USER`, e.g. a lab account. |
 | `--allow-shared` | If your record is missing or incomplete, use the configured shared service (`credentials.shared_service` / `AXLIB_SHARED_SERVICE`) and print a warning. Off by default. |
 | `--check` | Report on standard error which variables would be set or missing. Values are never shown, and nothing is exported. |
@@ -368,16 +368,17 @@ exported, it is plaintext in memory and goes wherever the environment goes.
   through the axlib CLIs, the TUI, or `StoreAdmin` clear that cache.
 - **Only the network profile** is covered. Infoblox fields (`IBGRID`, `IBUSER`,
   `IBPASS`) are not exported.
-- **No default config path**: axlib never searches for `axlib.toml`. Without
-  `AXLIB_CONFIG_FILE` or `--config`, the command reports "no credential store
-  is enabled" and exits 2.
+- **No searching for a config file**: axlib never searches directories for
+  `axlib.toml`. It uses `--config`, else `AXLIB_CONFIG_FILE`, else the file
+  that `install.sh` recorded in `/etc/axlib/install.env`. With none of these,
+  the command reports "no credential store is enabled" and exits 2.
 
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 | --- | --- |
 | `netenv-set prints shell code for eval and will not write it to a terminal` | You ran `axlib netenv-set` directly. Use `eval "$(axlib netenv-set)"` or the `netenv-set` shell function. |
-| `no credential store is enabled` | `AXLIB_CONFIG_FILE` is not set in this shell, or the file doesn't enable a store. Export it before sourcing the snippet. |
+| `no credential store is enabled` | No configuration file was found, or it doesn't enable a store. On a host without `install.sh`, export `AXLIB_CONFIG_FILE` before sourcing the snippet. |
 | `Credential configuration file does not exist` | The path in `AXLIB_CONFIG_FILE` or `--config` is wrong. |
 | `a complete network record for 'x' was not found` | No record for that service, or it lacks `netuser`/`netpass`. Check `axlib credential-db list`, or ask an administrator. |
 | `... could not be read` (exit 2), preceded by a `lookup failed` line | The store can't be opened. Most often you are not in the store's group (`id` should list `netops`), the key file is wrong, or the file mode prevents reading. The line above says which. |

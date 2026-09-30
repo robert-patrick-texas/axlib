@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `install.sh` records its options in `/etc/axlib/install.env`, and every later run starts from them, so `sudo ./install.sh` upgrades a host exactly as it was installed. New options `--no-tui`, `--no-netenv`, `--store`, and `--sbin-dir` undo `--with-tui`, `--with-netenv`, and `--no-store`, or choose where `axuv` goes. `--no-tui` now removes the TUI packages from `.venv`; before, `uv add` kept the extra. On a host installed by 1.0.3, a run without these options keeps the TUI and netenv choices it already has. A changed `--config-dir` now also updates `AXLIB_CONFIG_FILE` in `/etc/environment`.
+- `install.sh` installs `/usr/local/sbin/axuv` (from `scripts/axuv`), which replaces the shell function in `docs/INSTALL.md`. It runs uv as root on the shared environment with `umask 022` and the shared Python, taking the paths from the install record.
+- axlib uses the `CONFIG_FILE` recorded by `install.sh` when neither `--config` nor `AXLIB_CONFIG_FILE` names a configuration file. `axlib` commands, the TUI, and `ax.getkeys()` scripts therefore work under `sudo` without `-E`, in cron, and in systemd units with no extra setup. Added `axlib.credentials.default_config_file()`. Every `--config` help text describes the lookup order.
+- `docs/INSTALL.md`: documents the recorded options and the `axuv` command, and recommends `/etc/uv/uv.toml` for mirrors on offline hosts.
 - `docs/INSTALL.md`: axlib is now published on PyPI, so operators' own projects and uv scripts may use `axlib>=1.0` from PyPI as well as the server's release wheel. The 0.1.x releases, which lack the credential stores, have been removed from PyPI; the guide explains that a mirror or cache may still serve them, and how to recognize and fix that.
 
 ## 1.0.3 - 2026-09-29

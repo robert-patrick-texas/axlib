@@ -69,7 +69,7 @@ from .profiles import (
     validate_values,
 )
 from .providers import RedisCredentialCache
-from .settings import CredentialSettings, load_settings
+from .settings import CONFIG_OPTION_HELP, CredentialSettings, load_settings
 from .sqlite_store import (
     KEY_LENGTH,
     SQLiteCredentialRecord,
@@ -947,7 +947,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "store is ready."
         ),
     )
-    parser.add_argument("--config", type=Path, help="axlib TOML configuration file.")
+    parser.add_argument("--config", type=Path, help=CONFIG_OPTION_HELP)
     parser.add_argument(
         "--store",
         type=StoreKind,

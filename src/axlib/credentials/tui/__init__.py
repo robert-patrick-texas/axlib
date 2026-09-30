@@ -43,7 +43,7 @@ from typing import TextIO
 
 from axlib.credentials.admin import StoreKind
 from axlib.credentials.exceptions import CredentialError
-from axlib.credentials.settings import load_settings
+from axlib.credentials.settings import CONFIG_OPTION_HELP, load_settings
 
 PROG = "axlib credential-tui"
 DEFAULT_IDLE_MINUTES = 5
@@ -157,7 +157,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Credential values are never displayed."
         ),
     )
-    parser.add_argument("--config", type=Path, help="axlib TOML configuration file.")
+    parser.add_argument("--config", type=Path, help=CONFIG_OPTION_HELP)
     parser.add_argument(
         "--store",
         type=StoreKind,

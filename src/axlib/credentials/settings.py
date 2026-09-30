@@ -14,6 +14,11 @@ from an explicitly selected TOML file and are then overridden by environment
 variables.  This makes local development simple while allowing production
 schedulers to inject secrets at runtime.
 
+On a shared host set up by ``install.sh``, the installer records the
+configuration file it wrote in :data:`INSTALL_RECORD`.  That file is the last
+fallback, so ``axlib`` commands, cron jobs, and ``sudo`` sessions find the
+host's ``axlib.toml`` even where ``AXLIB_CONFIG_FILE`` was never exported.
+
 Only the Python standard library is required.  Python 3.11 or newer supplies
 :mod:`tomllib` for reading TOML safely.
 
@@ -29,6 +34,7 @@ Example:
 from __future__ import annotations
 
 import os
+import shlex
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -36,6 +42,18 @@ from pathlib import Path
 from typing import Any
 
 from .exceptions import CredentialConfigurationError
+
+# install.sh writes this file on every run.  Its location is fixed, not an
+# installer option, because it is how later runs, axuv, and this module find
+# the options (including the configuration directory) chosen the first time.
+INSTALL_RECORD = Path("/etc/axlib/install.env")
+
+# One help string for every command's --config option, so they all describe
+# the same lookup order that default_config_file() implements.
+CONFIG_OPTION_HELP = (
+    "axlib TOML configuration file (default: $AXLIB_CONFIG_FILE, else the "
+    f"CONFIG_FILE recorded by install.sh in {INSTALL_RECORD})."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -533,6 +551,75 @@ def validate_settings(settings: CredentialSettings) -> CredentialSettings:
     return settings
 
 
+def installed_config_file(
+    record: str | os.PathLike[str] | None = None,
+) -> Path | None:
+    """Return the configuration file that ``install.sh`` recorded, if any.
+
+    The record is a shell file (``NAME='value'`` lines) because ``install.sh``
+    and ``axuv`` read it with the shell's ``.`` command.  :func:`shlex.split`
+    applies the same quoting and comment rules, so Python reads exactly the
+    value the shell would see without executing the file.  As in the shell,
+    the last ``CONFIG_FILE`` assignment wins.
+
+    Args:
+        record (str | os.PathLike[str] | None): Record to read; defaults to
+            :data:`INSTALL_RECORD`.
+
+    Returns:
+        pathlib.Path | None: The recorded configuration file, or ``None`` when
+            there is no record, it cannot be read (for example by a user
+            outside the store's group), or it names no ``CONFIG_FILE``.
+
+    Raises:
+        CredentialConfigurationError: If the record exists but its quoting is
+            broken, so the installer's intent cannot be determined.
+    """
+    path = Path(INSTALL_RECORD if record is None else record)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        # Unreadable is treated like absent: a user who may not read /etc/axlib
+        # could not read the configuration or key it points to either.
+        return None
+
+    config_file: Path | None = None
+    for line in text.splitlines():
+        try:
+            words = shlex.split(line, comments=True)
+        except ValueError as exc:
+            raise CredentialConfigurationError(
+                f"Cannot parse the install record {path}: {exc}"
+            ) from exc
+        if len(words) == 1 and words[0].startswith("CONFIG_FILE="):
+            config_file = optional_path(words[0].removeprefix("CONFIG_FILE="))
+    return config_file
+
+
+def default_config_file(environ: Mapping[str, str] | None = None) -> Path | None:
+    """Return the configuration file used when no ``--config`` is given.
+
+    ``AXLIB_CONFIG_FILE`` comes first so an operator or a scheduled job can
+    always choose a different file.  The installer's record is the fallback.
+
+    Args:
+        environ (Mapping[str, str] | None): Environment mapping, primarily
+            useful for tests.  Defaults to :data:`os.environ`.
+
+    Returns:
+        pathlib.Path | None: The selected configuration file, or ``None`` when
+            neither source names one.
+
+    Raises:
+        CredentialConfigurationError: Propagated from
+            :func:`installed_config_file` for a malformed install record.
+    """
+    environment = os.environ if environ is None else environ
+    return optional_path(environment.get("AXLIB_CONFIG_FILE")) or (
+        installed_config_file()
+    )
+
+
 def load_settings(
     config_file: str | os.PathLike[str] | None = None,
     *,
@@ -540,10 +627,11 @@ def load_settings(
 ) -> CredentialSettings:
     """Load credential settings from TOML and environment variables.
 
-    Environment variables take precedence over TOML.  A config file is used only
-    when passed directly or named by ``AXLIB_CONFIG_FILE``; axlib does not scan
-    arbitrary directories because deterministic startup is important for
-    scheduled network jobs.
+    Environment variables take precedence over TOML.  The TOML file is the one
+    passed directly, else the one named by ``AXLIB_CONFIG_FILE``, else the one
+    recorded by ``install.sh`` (see :func:`default_config_file`).  axlib does
+    not scan directories for other files because deterministic startup is
+    important for scheduled network jobs.
 
     Args:
         config_file (str | os.PathLike[str] | None): Optional explicit TOML file.
@@ -558,8 +646,7 @@ def load_settings(
             unsupported type or range.
     """
     environment = os.environ if environ is None else environ
-    selected_from_env = optional_text(environment.get("AXLIB_CONFIG_FILE"))
-    selected_path = optional_path(config_file or selected_from_env)
+    selected_path = optional_path(config_file) or default_config_file(environment)
     data = _read_toml(selected_path, required=selected_path is not None)
     config_directory = (
         selected_path.expanduser().resolve(strict=False).parent

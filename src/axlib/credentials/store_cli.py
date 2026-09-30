@@ -37,7 +37,7 @@ from .admin import ChangeResult, StoreAdmin, StoreKind, StoreRecord, prepare_upd
 from .cli_common import collect_values, normalize_service_for_write, render_table
 from .exceptions import CredentialError, CredentialRecordNotFoundError
 from .profiles import DEFAULT_PROFILE, PROFILES, get_profile, validate_values
-from .settings import load_settings
+from .settings import CONFIG_OPTION_HELP, load_settings
 
 
 def _add_value_arguments(parser: argparse.ArgumentParser) -> None:
@@ -117,7 +117,7 @@ def build_arg_parser(kind: StoreKind) -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         type=Path,
-        help="Optional axlib TOML configuration file.",
+        help=CONFIG_OPTION_HELP,
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
 

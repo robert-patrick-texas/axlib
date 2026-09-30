@@ -52,6 +52,7 @@ from .manager import (
 from .providers import RedisCredentialCache
 from .settings import (
     CredentialSettings,
+    default_config_file,
     load_settings,
     parse_file_mode,
     validate_settings,
@@ -177,6 +178,7 @@ __all__ = [
     "StoreKind",
     "StoreStatus",
     "configured_kinds",
+    "default_config_file",
     "generate_credential_file_key_file",
     "generate_sqlite_key_file",
     "get_profile",

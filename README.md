@@ -38,7 +38,7 @@ tar xzf axlib-<version>.tar.gz
 sudo ./axlib-<version>/install.sh
 ```
 
-See `docs/INSTALL.md` for options, upgrades, rollback, and backups.
+The installer records its options in `/etc/axlib/install.env`, so the `axlib` command finds `/etc/axlib/axlib.toml` without `--config`, and upgrades need no options. Administrators add libraries such as netmiko for every script with `sudo axuv add netmiko`; `axuv` runs uv on the shared environment with the installer's settings. See `docs/INSTALL.md` for options, upgrades, rollback, and backups.
 
 Runtime dependencies are limited to `cryptography` and `redis`. Redis is imported only when caching is enabled. The optional `tui` extra adds `textual` and `rich`.
 

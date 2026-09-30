@@ -37,7 +37,7 @@ axlib-credential-tui --config /etc/axlib/axlib.toml
 python -m axlib.credentials.tui --config /etc/axlib/axlib.toml
 ```
 
-`--config` can be omitted when `AXLIB_CONFIG_FILE` is set. Other options:
+`--config` can be omitted when `AXLIB_CONFIG_FILE` is set, or on a host installed with `install.sh`, which records its configuration file in `/etc/axlib/install.env`. Other options:
 
 | Option | Meaning |
 | --- | --- |
