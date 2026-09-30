@@ -66,11 +66,12 @@ from .manager import (
 from .profiles import NETWORK_PROFILE, missing_required
 from .settings import CONFIG_OPTION_HELP, CredentialSettings, load_settings
 
-# Each network-profile field is exported under its upper-case name
+# Each field that ax.getkeys() reads is exported under its upper-case name
 # (netuser -> NETUSER).  Deriving the mapping from the profile keeps a single
 # list of network fields for ax.getkeys(), the CLIs, the TUI, and this module.
+# lookup_names leaves out the note, which is for people, not for devices.
 ENV_VARIABLES: Mapping[str, str] = MappingProxyType(
-    {name: name.upper() for name in NETWORK_PROFILE.field_names}
+    {name: name.upper() for name in NETWORK_PROFILE.lookup_names}
 )
 
 # Exit statuses are part of the command's interface: shell functions and login
@@ -220,7 +221,7 @@ def lookup_network_record(
 
     values = lookup_values(
         service,
-        dict.fromkeys(NETWORK_PROFILE.field_names),
+        dict.fromkeys(NETWORK_PROFILE.lookup_names),
         settings=settings,
         store=store,
         reporter=collect,

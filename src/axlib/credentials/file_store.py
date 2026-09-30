@@ -54,7 +54,7 @@ import tempfile
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -104,12 +104,15 @@ class CredentialFileRecord:
         fields: Sorted encrypted field names; secret values are never included.
         created_at: UTC timestamp recorded when the service was created.
         updated_at: UTC timestamp recorded after the latest change.
+        visible: Values of the non-secret fields the caller asked for
+            with ``visible_fields``, such as the ``note``; empty by default.
     """
 
     service: str
     fields: tuple[str, ...]
     created_at: str
     updated_at: str
+    visible: Mapping[str, str] = field(default_factory=dict)
 
 
 def _load_aesgcm() -> tuple[type[Any], type[BaseException]]:
@@ -1563,11 +1566,16 @@ class CredentialFileStore:
         """
         self.delete(service, (field,))
 
-    def list_records(self) -> list[CredentialFileRecord]:
+    def list_records(
+        self, visible_fields: Sequence[str] = ()
+    ) -> list[CredentialFileRecord]:
         """List service metadata without returning credential values.
 
         Args:
-            None: Every encrypted service record is inspected.
+            visible_fields (Sequence[str]): Non-secret fields whose values
+                each record should carry in ``visible``, such as ``("note",)``.
+                The store cannot tell secret fields apart, so callers must
+                name only fields that are safe to display.
 
         Returns:
             list[CredentialFileRecord]: Service names, field names, and audit
@@ -1613,6 +1621,11 @@ class CredentialFileStore:
                         fields=tuple(sorted(values)),
                         created_at=created_at,
                         updated_at=updated_at,
+                        visible={
+                            name: values[name]
+                            for name in visible_fields
+                            if name in values
+                        },
                     )
                 )
         return sorted(records, key=lambda record: record.service.casefold())

@@ -15,6 +15,7 @@ Axlib is an educational Python package for Network Operations staff building aut
 - Both durable stores support in-place AES-256 key rotation that re-encrypts every record.
 - `StoreAdmin` is one Python administration API for either store; both CLIs and the optional TUI are thin layers over it.
 - An optional full-screen credential manager (TUI) gives non-developers an "easy button" for their `ax.getkeys()` records, locally or over SSH.
+- Every record may carry a short, non-secret note (owner, purpose, expiry) that the TUI and `list` show and lookups ignore.
 - `axlib netenv-set` / `axlib netenv-clear` load `NETUSER`, `NETPASS`, and `NETENABLE` into an operator's shell at SSH login, and clear them again.
 
 ## Install

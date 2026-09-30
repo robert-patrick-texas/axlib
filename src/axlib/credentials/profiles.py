@@ -10,6 +10,11 @@ particular field names:
 * ``ax.getkeys()`` reads ``netuser``, ``netpass``, and ``netenable``.
 * ``ax.getinfoblox()`` reads ``ibgrid``, ``ibuser``, and ``ibpass``.
 
+Every profile also allows an optional ``note``: free text for people, such as
+"lab account, expires in June".  No lookup helper reads it, so a note never
+changes what ``ax.getkeys()`` returns.  It is stored inside the encrypted
+record like every other field, and listings show it because it is not secret.
+
 A *profile* writes those expectations down once.  The Python admin API
 (:mod:`axlib.credentials.admin`), both administration CLIs, and the optional TUI
 all validate against the same profile objects, so an operator can never create
@@ -54,12 +59,15 @@ class FieldSpec:
         label: Friendly description shown in listings and the TUI.
         secret: ``True`` when the value must never be displayed.
         required: ``True`` when a new record must include this field.
+        lookup: ``True`` when the profile's lookup helper reads the field.
+            ``False`` for the note, which is only for people.
     """
 
     name: str
     label: str
     secret: bool
     required: bool
+    lookup: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +114,30 @@ class RecordProfile:
         """
         return tuple(spec.name for spec in self.fields if spec.required)
 
+    @property
+    def lookup_names(self) -> tuple[str, ...]:
+        """Return the fields that the profile's lookup helper reads.
+
+        Args:
+            None: Names come from this profile's ``fields``.
+
+        Returns:
+            tuple[str, ...]: Field names such as ``("netuser", "netpass",
+                "netenable")``; never the note.
+
+        Raises:
+            None: Reading attributes of frozen dataclasses cannot fail.
+        """
+        return tuple(spec.name for spec in self.fields if spec.lookup)
+
+
+# The one field every profile shares.  Listings, the CLIs, and the TUI refer to
+# it by this name, so it is defined once here.
+NOTE_FIELD = "note"
+# Long enough for a sentence, short enough to stay readable in a table row.
+NOTE_MAX_LENGTH = 120
+NOTE_SPEC = FieldSpec(NOTE_FIELD, "Note", secret=False, required=False, lookup=False)
+
 
 NETWORK_PROFILE = RecordProfile(
     name="network",
@@ -116,6 +148,7 @@ NETWORK_PROFILE = RecordProfile(
         # An enable secret is optional because privilege-15 accounts log in
         # directly to enable mode; ax.getkeys() returns None for it.
         FieldSpec("netenable", "Enable secret", secret=True, required=False),
+        NOTE_SPEC,
     ),
 )
 
@@ -126,6 +159,7 @@ INFOBLOX_PROFILE = RecordProfile(
         FieldSpec("ibgrid", "Grid master host", secret=False, required=True),
         FieldSpec("ibuser", "API username", secret=False, required=True),
         FieldSpec("ibpass", "API password", secret=True, required=True),
+        NOTE_SPEC,
     ),
 )
 
@@ -216,15 +250,19 @@ def validate_values(
             every required field; ``False`` for a partial update.
 
     Returns:
-        dict[str, str]: A plain-dictionary copy of ``values``.
+        dict[str, str]: A plain-dictionary copy of ``values``, with the note
+            stripped of surrounding spaces.
 
     Raises:
         ValueError: If ``values`` is empty, contains a field outside the
-            profile, or (when ``creating``) lacks a required field.
+            profile, has an unsuitable note (see :func:`validate_note`), or
+            (when ``creating``) lacks a required field.
     """
     prepared = dict(values)
     if not prepared:
         raise ValueError("Specify at least one credential field.")
+    if NOTE_FIELD in prepared:
+        prepared[NOTE_FIELD] = validate_note(prepared[NOTE_FIELD])
 
     unsupported = sorted(set(prepared).difference(profile.field_names))
     if unsupported:
@@ -240,6 +278,36 @@ def validate_values(
                 f"{', '.join(profile.required_names)}; missing: {', '.join(missing)}"
             )
     return prepared
+
+
+def validate_note(note: str) -> str:
+    """Check that a note is one short line of readable text.
+
+    Notes appear in one-line table rows and in ``key=value`` output, so a
+    newline or a terminal control character would break the layout (or, for
+    escape sequences, change the operator's terminal).
+
+    Args:
+        note (str): Note text as typed.
+
+    Returns:
+        str: The note without leading or trailing spaces.
+
+    Raises:
+        ValueError: If the note is blank, longer than
+            :data:`NOTE_MAX_LENGTH`, or contains a control character.
+    """
+    text = note.strip()
+    if not text:
+        raise ValueError(f"A note cannot be blank; remove the {NOTE_FIELD} field.")
+    if len(text) > NOTE_MAX_LENGTH:
+        raise ValueError(
+            f"A note may have at most {NOTE_MAX_LENGTH} characters; "
+            f"this one has {len(text)}."
+        )
+    if not text.isprintable():
+        raise ValueError("A note must be one line without control characters.")
+    return text
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -297,13 +365,14 @@ def main(argv: Sequence[str] | None = None, *, stream: TextIO | None = None) -> 
             spec.name,
             "yes" if spec.required else "no",
             "yes" if spec.secret else "no",
+            "yes" if spec.lookup else "no",
             spec.label,
         )
         for profile in PROFILES.values()
         for spec in profile.fields
     ]
     render_table(
-        ("PROFILE", "FIELD", "REQUIRED", "SECRET", "DESCRIPTION"),
+        ("PROFILE", "FIELD", "REQUIRED", "SECRET", "LOOKUP", "DESCRIPTION"),
         rows,
         stream=output,
     )

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from io import StringIO
 from pathlib import Path
 
@@ -57,6 +58,48 @@ def test_update_can_remove_an_optional_field(tmp_path: Path, kind: StoreKind) ->
     assert "hidden" not in output
     listing = _run(kind, config, "list", "--json")[1]
     assert '"netenable"' not in listing
+
+
+@BOTH_KINDS
+def test_list_shows_the_note_last_in_the_table_and_in_json(
+    tmp_path: Path, kind: StoreKind
+) -> None:
+    config = _initialized(tmp_path, kind)
+    for arguments in (
+        ("--service", "ops", "--set", "netuser=ops", "--set", "netpass=pw"),
+        ("--service", "lab", "--set", "netuser=lab", "--set", "netpass=pw"),
+    ):
+        assert _run(kind, config, "add", *arguments)[0] == 0
+    status, output = _run(
+        kind, config, "update", "--service", "ops", "--set", "note=core routers"
+    )
+    assert status == 0
+    assert "fields=note" in output
+
+    header, lab, ops = _run(kind, config, "list")[1].splitlines()
+    assert header.split() == ["SERVICE", "FIELDS", "CREATED_UTC", "UPDATED_UTC", "NOTE"]
+    assert ops.split()[1] == "netpass,netuser,note"
+    assert ops.endswith("  core routers")
+    assert len(lab.split()) == 4  # no note, and no trailing spaces
+
+    listing = json.loads(_run(kind, config, "list", "--json")[1])
+    assert {row["service"]: row["note"] for row in listing} == {
+        "lab": None,
+        "ops": "core routers",
+    }
+    assert "pw" not in json.dumps(listing)
+
+
+def test_a_multi_line_note_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    kind = StoreKind.SQLITE
+    config = _initialized(tmp_path, kind)
+    record = ("--service", "ops", "--set", "netuser=ops", "--set", "netpass=pw")
+    with pytest.raises(SystemExit):
+        _run(kind, config, "add", *record, "--set", "note=one\ntwo")
+    assert "control characters" in capsys.readouterr().err
+    assert _run(kind, config, "list", "--json")[1].strip() == "[]"
 
 
 def test_required_fields_cannot_be_removed_even_in_a_dry_run(tmp_path: Path) -> None:

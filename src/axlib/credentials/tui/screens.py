@@ -46,6 +46,8 @@ from axlib.credentials.admin import AnnotatedRecord, StoreStatus, prepare_update
 from axlib.credentials.manager import normalize_service_for_write
 from axlib.credentials.profiles import (
     DEFAULT_PROFILE,
+    NOTE_FIELD,
+    NOTE_MAX_LENGTH,
     PROFILES,
     RecordProfile,
     validate_values,
@@ -286,8 +288,9 @@ class RecordFormScreen(DialogScreen[RecordChange]):
     """Collect the fields for a new record or changes to an existing one.
 
     Passwords are typed twice and compared.  When editing, a blank password
-    means "keep the current value", non-secret fields such as the username are
-    pre-filled, and optional fields can be ticked for removal.
+    means "keep the current value", non-secret fields such as the username and
+    the note are pre-filled, an optional password can be ticked for removal,
+    and clearing the note removes it.
     """
 
     def __init__(
@@ -374,7 +377,7 @@ class RecordFormScreen(DialogScreen[RecordChange]):
         else:
             yield Static(
                 f"[b]{escape(self.profile.label)}[/b] record.  Leave a password "
-                "blank to keep its current value.",
+                "blank to keep its current value; clear the note to remove it.",
                 classes="hint",
             )
         yield Vertical(*self._field_rows(self.profile), id="fields")
@@ -398,8 +401,10 @@ class RecordFormScreen(DialogScreen[RecordChange]):
             label = f"{spec.label}{' *' if spec.required and self.creating else ''}"
             if self.creating:
                 hint = "required" if spec.required else "optional"
-            else:
+            elif spec.secret or spec.required:
                 hint = "leave blank to keep"
+            else:
+                hint = "optional; clear to remove"
             if spec.secret:
                 entry: Input = SecretInput(placeholder=hint, id=spec.name)
                 confirm = SecretInput(
@@ -414,10 +419,19 @@ class RecordFormScreen(DialogScreen[RecordChange]):
                     value=self.visible_values.get(spec.name, ""),
                     placeholder=hint,
                     compact=True,
+                    # 0 means "no limit" to Textual; only the note has one.
+                    max_length=NOTE_MAX_LENGTH if spec.name == NOTE_FIELD else 0,
                     id=spec.name,
                 )
                 rows.append(Horizontal(Label(label), entry, classes="row"))
-            if not self.creating and not spec.required and spec.name in present:
+            # A visible optional field is removed by clearing it, so only an
+            # optional password, which is never shown, needs a checkbox.
+            if (
+                not self.creating
+                and spec.secret
+                and not spec.required
+                and spec.name in present
+            ):
                 rows.append(
                     Checkbox(
                         f"Remove {spec.label.lower()}",
@@ -562,6 +576,12 @@ class RecordFormScreen(DialogScreen[RecordChange]):
                 confirm = self.query_one(f"#{spec.name}-confirm", Input).value
                 if value != confirm:
                     raise ValueError(f"The two {spec.label.lower()} entries differ.")
+            elif not spec.required and not value.strip():
+                # Clearing a pre-filled optional field such as the note
+                # removes it; a field that was already empty stays absent.
+                if spec.name in self.visible_values:
+                    remove.append(spec.name)
+                continue
             # Blank means "keep the current value", and re-sending an
             # unchanged pre-filled value would only rewrite the same data.
             if value and value != self.visible_values.get(spec.name):

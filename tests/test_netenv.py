@@ -81,7 +81,13 @@ def config(tmp_path: Path) -> Path:
     admin.initialize(generate_key=True)
     admin.add(
         "first.last",
-        {"netuser": "first.last", "netpass": HOSTILE_PASSWORD, "netenable": "en"},
+        {
+            "netuser": "first.last",
+            "netpass": HOSTILE_PASSWORD,
+            "netenable": "en",
+            # The note is for people: it must never become a NOTE variable.
+            "note": "core routers",
+        },
     )
     admin.add("lab.user", {"netuser": "lab", "netpass": "labpass"})
     admin.add("network-shared", {"netuser": "shared", "netpass": "sharedpass"})
@@ -203,6 +209,7 @@ def test_set_output_round_trips_through_bash_eval(config: Path, tmp_path: Path) 
         "NETENABLE": "en",
     }
     assert not (tmp_path / "PWNED").exists()
+    assert "NOTE" not in out.replace("NETENABLE", "")
     assert HOSTILE_PASSWORD not in err
     assert "exported NETUSER, NETPASS, NETENABLE" in err
 

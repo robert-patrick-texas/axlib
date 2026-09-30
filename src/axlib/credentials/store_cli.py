@@ -36,7 +36,13 @@ from typing import TextIO
 from .admin import ChangeResult, StoreAdmin, StoreKind, StoreRecord, prepare_update
 from .cli_common import collect_values, normalize_service_for_write, render_table
 from .exceptions import CredentialError, CredentialRecordNotFoundError
-from .profiles import DEFAULT_PROFILE, PROFILES, get_profile, validate_values
+from .profiles import (
+    DEFAULT_PROFILE,
+    NOTE_FIELD,
+    PROFILES,
+    get_profile,
+    validate_values,
+)
 from .settings import CONFIG_OPTION_HELP, load_settings
 
 
@@ -220,6 +226,7 @@ def render_records_json(records: Sequence[StoreRecord], *, stream: TextIO) -> No
             "fields": list(record.fields),
             "created_at": record.created_at,
             "updated_at": record.updated_at,
+            "note": record.visible.get(NOTE_FIELD),
         }
         for record in records
     ]
@@ -239,14 +246,17 @@ def render_records_table(records: Sequence[StoreRecord], *, stream: TextIO) -> N
     Raises:
         OSError: If ``stream`` cannot be written.
     """
+    # NOTE is last because it is free text with spaces: `awk '{print $1}'`
+    # and similar tools still find the fixed columns where they were.
     render_table(
-        ("SERVICE", "FIELDS", "CREATED_UTC", "UPDATED_UTC"),
+        ("SERVICE", "FIELDS", "CREATED_UTC", "UPDATED_UTC", "NOTE"),
         [
             (
                 record.service,
                 ",".join(record.fields),
                 record.created_at,
                 record.updated_at,
+                record.visible.get(NOTE_FIELD, ""),
             )
             for record in records
         ],

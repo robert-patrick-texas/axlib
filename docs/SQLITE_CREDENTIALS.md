@@ -86,9 +86,12 @@ The return value is `True` if a row was removed and `False` if the service was a
 ```python
 for record in store.list_records():
     print(record.service, record.fields, record.updated_at)
+
+for record in store.list_records(visible_fields=("note",)):
+    print(record.service, record.visible.get("note", ""))
 ```
 
-Only safe metadata objects are returned; credential values are not exposed by the listing API.
+Only safe metadata objects are returned; credential values are not exposed by the listing API. `visible_fields` names non-secret fields whose values each record should carry in `record.visible`. The store cannot tell which fields are secret, so name only fields that are safe to display; `StoreAdmin.list_records()` asks for the `note` only.
 
 ## generate_sqlite_key_file()
 

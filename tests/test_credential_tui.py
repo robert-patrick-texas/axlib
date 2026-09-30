@@ -38,7 +38,7 @@ from axlib.credentials.tui import (
     environment_problem,
     terminal_problem,
 )
-from axlib.credentials.tui.app import CredentialAdminApp
+from axlib.credentials.tui.app import NOTE_COLUMN_WIDTH, CredentialAdminApp
 from axlib.credentials.tui.screens import ConfirmScreen, RecordChange, RecordFormScreen
 from axlib.credentials.tui.widgets import SecretInput
 
@@ -187,15 +187,79 @@ def test_add_record_from_the_keyboard_never_shows_the_secret(tmp_path: Path) -> 
         await pilot.press(*"jsmith", "enter")  # Enter moves to the next box
         await pilot.press(*SECRET, "enter", *SECRET, "enter")
         assert SECRET not in screen_text(app)
-        await pilot.press("enter", "enter")  # skip the optional enable secret; save
+        await pilot.press("enter", "enter")  # skip the optional enable secret
+        await pilot.press(*"core routers", "enter")  # the note, then save
         await settle(pilot)
         assert not isinstance(app.screen, RecordFormScreen)
         assert table_rows(app)[0][:2] == ["jsmith", "netuser,netpass"]
+        assert table_rows(app)[0][4] == "core routers"
         assert SECRET not in screen_text(app)
 
     run_app(CredentialAdminApp(settings, idle_minutes=0), scenario)
-    stored = StoreAdmin(settings, StoreKind.SQLITE).store.read("jsmith", ["netpass"])
-    assert stored == {"netpass": SECRET}
+    stored = StoreAdmin(settings, StoreKind.SQLITE).store.read(
+        "jsmith", ["netpass", "note"]
+    )
+    assert stored == {"netpass": SECRET, "note": "core routers"}
+
+
+def test_edit_changes_and_clearing_removes_the_note(tmp_path: Path) -> None:
+    settings = ready_settings(tmp_path)
+    admin = StoreAdmin(settings, StoreKind.SQLITE)
+    admin.add("ops", {"netuser": "ops", "netpass": "pw", "note": "old note"})
+
+    async def change_note(app: CredentialAdminApp, pilot: Pilot[None]) -> None:
+        assert table_rows(app)[0][4] == "old note"
+        await pilot.press("enter")
+        await settle(pilot)
+        form = app.screen
+        assert isinstance(form, RecordFormScreen)
+        assert form.query_one("#note", Input).value == "old note"
+        # A visible field is removed by clearing it, so it has no checkbox.
+        assert not form.query("#note-remove")
+        form.query_one("#note", Input).value = "new note"
+        await pilot.click("#submit")
+        await settle(pilot)
+        assert table_rows(app)[0][4] == "new note"
+
+    run_app(CredentialAdminApp(settings, idle_minutes=0), change_note)
+    assert admin.store.read("ops", ["note", "netpass"]) == {
+        "note": "new note",
+        "netpass": "pw",
+    }
+
+    async def clear_note(app: CredentialAdminApp, pilot: Pilot[None]) -> None:
+        await pilot.press("enter")
+        await settle(pilot)
+        app.screen.query_one("#note", Input).value = "  "
+        await pilot.click("#submit")
+        await settle(pilot)
+        row = table_rows(app)[0]
+        assert (row[1], row[4]) == ("netuser,netpass", "")
+
+    run_app(CredentialAdminApp(settings, idle_minutes=0), clear_note)
+    assert admin.store.read("ops", ["note"]) == {}
+
+
+def test_filter_matches_notes_and_long_notes_are_shortened(tmp_path: Path) -> None:
+    settings = ready_settings(tmp_path)
+    admin = StoreAdmin(settings, StoreKind.SQLITE)
+    admin.add("alpha", {"netuser": "a", "netpass": "pw", "note": "DC2 jump host"})
+    admin.add("bravo", {"netuser": "b", "netpass": "pw", "note": "x" * 60})
+
+    async def scenario(app: CredentialAdminApp, pilot: Pilot[None]) -> None:
+        bravo_note = table_rows(app)[1][4]
+        assert len(bravo_note) == NOTE_COLUMN_WIDTH
+        assert bravo_note.endswith("…")
+        await pilot.press("slash", *"jump")
+        assert [row[0] for row in table_rows(app)] == ["alpha"]
+        # The full note of the highlighted record is shown below the table.
+        detail = app.query_one("#note-detail", Static)
+        assert str(detail.render()) == "Note  DC2 jump host"
+        await pilot.press("x")  # "jumpx" matches nothing
+        assert table_rows(app) == []
+        assert str(detail.render()) == ""
+
+    run_app(CredentialAdminApp(settings, idle_minutes=0), scenario)
 
 
 def test_choosing_the_infoblox_profile_swaps_the_fields(tmp_path: Path) -> None:

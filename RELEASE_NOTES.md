@@ -6,7 +6,7 @@ Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change
 
 ### Overview
 
-This release makes a shared host easier to run after the first install. `install.sh` records its options and reuses them, so upgrades need no options. The `axuv` helper becomes an installed command, `/usr/local/sbin/axuv`. The `axlib` command and `ax.getkeys()` scripts find the host's configuration without `AXLIB_CONFIG_FILE`. Storage formats are unchanged.
+This release makes a shared host easier to run after the first install. `install.sh` records its options and reuses them, so upgrades need no options. The `axuv` helper becomes an installed command, `/usr/local/sbin/axuv`. The `axlib` command and `ax.getkeys()` scripts find the host's configuration without `AXLIB_CONFIG_FILE`. Every credential record can now carry a short note, which the TUI and the CLIs show and edit. Storage formats are unchanged.
 
 ### Recorded installer options
 
@@ -34,6 +34,16 @@ An existing `axuv` function in root's `~/.bashrc` takes precedence over the comm
 
 axlib now selects its TOML file from `--config`, then `AXLIB_CONFIG_FILE`, then the `CONFIG_FILE` in `/etc/axlib/install.env`. On an installed host, `sudo axlib credential-db add ...` works without `-E` or an `export`, and cron jobs and systemd units need no `AXLIB_CONFIG_FILE`. `axlib.credentials.default_config_file()` returns the selected file, and every `--config` help text states the order. Users who cannot read `/etc/axlib` see no change.
 
+### Record notes
+
+Every record may now have a `note`: one line of up to 120 characters for the people who manage the store, such as "NOC team account; owner J. Smith" or "lab account, expires in June".
+
+- **In the TUI**, the Add and Edit forms have a Note box, and clearing it removes the note. The table has a NOTE column showing the first 40 characters. The line below the table shows the whole note of the highlighted record, so it is readable on an 80-column terminal. The `/` filter matches note text as well as service names. The column that explains how `ax.getkeys()` treats each record (`you`, `shared fallback`, `missing netpass`) is renamed from NOTES to **ADVICE**.
+- **In the CLIs**, `--set note="..."` and `--remove note` work with `add` and `update`. `list` adds a NOTE column as the last column, and `list --json` adds `"note"` (`null` without one).
+- **In Python**, `StoreAdmin.list_records()` returns each note in `record.visible["note"]`, and `AnnotatedRecord.note` gives it directly.
+
+The note is stored inside the encrypted record like any other field, so neither store's format changes. It is not treated as secret, because listings display it. No lookup helper reads it: `ax.getkeys()` returns the same values, `axlib netenv-set` never exports a `NOTE` variable, and a note in both stores is not reported as overridden. Blank notes, notes over 120 characters, and notes with line breaks or control characters are refused, so a note cannot break a table row or send escape sequences to a terminal.
+
 ### Fixes
 
 - `--no-tui` removes the credential manager's packages from the shared environment. In 1.0.3, leaving out `--with-tui` was documented to remove the TUI but did not, because `uv add` keeps an existing extra and never uninstalls packages.
@@ -44,6 +54,8 @@ axlib now selects its TOML file from `--config`, then `AXLIB_CONFIG_FILE`, then 
 - On a host with `/etc/axlib/install.env`, a program that previously ran without any configuration file now reads the recorded `axlib.toml`. Set `AXLIB_CONFIG_FILE` or pass `--config` to choose a different file.
 - A 1.0.3 host upgrades in place with `sudo ./axlib-1.0.4/install.sh`. Its configuration, key, store, records, and added libraries are kept.
 - Mirror settings for offline hosts belong in `/etc/uv/uv.toml`, which every uv run reads, instead of the old `axuv` function.
+- `list` output has a fifth column, NOTE, at the end, and `list --json` objects have a `note` key. Scripts that read the first four columns by position, or ignore unknown JSON keys, are unaffected. The TUI's advice column is now titled ADVICE.
+- A record with a note stays usable by 1.0.3: lookups ignore the field, and the 1.0.3 TUI and `list` show `note` as an extra field name. The 1.0.3 CLIs refuse `--set note=...`.
 - No storage format, dependency, or `ax.getkeys()` precedence changes.
 
 ### Validation
@@ -54,8 +66,10 @@ Validated on Python 3.14.3:
 Ruff format and lint (all rules, including docs code): passed
 ty static type check:                                  passed
 Educational docstring audit:                           passed
-Main pytest suite:                                     168 passed
+Main pytest suite:                                     178 passed
 shellcheck install.sh, scripts/axuv:                   passed
+TUI notes (add, edit, clear, filter, 80-column note
+  line) in headless Textual tests:                     passed
 install.sh on Ubuntu 24.04 (fresh, rerun without
   options, --no-tui/--no-netenv, --config-dir change,
   axuv under umask 077, non-root refusal):             passed

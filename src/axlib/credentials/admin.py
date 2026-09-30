@@ -63,6 +63,7 @@ from .file_store import (
 from .manager import normalize_legacy_service_name, normalize_service_for_write
 from .profiles import (
     DEFAULT_PROFILE,
+    NOTE_FIELD,
     RecordProfile,
     missing_required,
     profile_for_fields,
@@ -407,6 +408,21 @@ class AnnotatedRecord:
     profile: RecordProfile
     notes: tuple[RecordNote, ...]
 
+    @property
+    def note(self) -> str | None:
+        """Return the operator-written note, which is not the advice ``notes``.
+
+        Args:
+            None: The value comes from the listed record.
+
+        Returns:
+            str | None: The record's ``note`` field, or ``None`` without one.
+
+        Raises:
+            None: Only a mapping lookup is performed.
+        """
+        return self.record.visible.get(NOTE_FIELD)
+
 
 @dataclass(frozen=True, slots=True)
 class ChangeResult:
@@ -639,18 +655,19 @@ class StoreAdmin:
         self.store.initialize()
 
     def list_records(self) -> list[StoreRecord]:
-        """List every service with its field names and timestamps.
+        """List every service with its field names, timestamps, and note.
 
         Args:
             None: The configured store is read.
 
         Returns:
-            list[StoreRecord]: Safe metadata ordered by service name.
+            list[StoreRecord]: Safe metadata ordered by service name.  Each
+                record's ``visible`` mapping holds its ``note``, if it has one.
 
         Raises:
             CredentialError: If the store cannot be opened or decrypted.
         """
-        return list(self.store.list_records())
+        return list(self.store.list_records(visible_fields=(NOTE_FIELD,)))
 
     def annotate(
         self,
@@ -692,9 +709,10 @@ class StoreAdmin:
             for kind, fields_by_service in overriding.items():
                 # ax.getkeys() fills each field from the first store that has
                 # it, so only fields present in *both* stores are overridden.
+                # Fields it never reads, such as the note, cannot be.
                 hidden = sorted(
                     fields_by_service.get(record.service, frozenset()).intersection(
-                        record.fields
+                        record.fields, profile.lookup_names
                     )
                 )
                 if hidden:

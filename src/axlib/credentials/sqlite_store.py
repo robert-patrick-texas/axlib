@@ -49,7 +49,7 @@ import stat
 import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -91,12 +91,15 @@ class SQLiteCredentialRecord:
         fields: Sorted encrypted field names; secret values are never included.
         created_at: UTC timestamp recorded when the service was added.
         updated_at: UTC timestamp recorded after the latest update.
+        visible: Values of the non-secret fields the caller asked for
+            with ``visible_fields``, such as the ``note``; empty by default.
     """
 
     service: str
     fields: tuple[str, ...]
     created_at: str
     updated_at: str
+    visible: Mapping[str, str] = field(default_factory=dict)
 
 
 def _load_aesgcm() -> tuple[type[Any], type[BaseException]]:
@@ -881,14 +884,14 @@ class SQLiteCredentialStore:
             raise CredentialConfigurationError(
                 "At least one credential field is required."
             )
-        for field, value in prepared.items():
-            if not isinstance(field, str) or not field:
+        for name, value in prepared.items():
+            if not isinstance(name, str) or not name:
                 raise CredentialConfigurationError(
                     "SQLite credential field names must be non-blank strings."
                 )
             if not isinstance(value, str):
                 raise CredentialConfigurationError(
-                    f"SQLite credential field {field!r} must contain text."
+                    f"SQLite credential field {name!r} must contain text."
                 )
         return prepared
 
@@ -1551,11 +1554,16 @@ class SQLiteCredentialStore:
                 f"Unable to delete SQLite fields for service {service!r}: {exc}"
             ) from exc
 
-    def list_records(self) -> list[SQLiteCredentialRecord]:
+    def list_records(
+        self, visible_fields: Sequence[str] = ()
+    ) -> list[SQLiteCredentialRecord]:
         """List service metadata without returning credential values.
 
         Args:
-            None: All rows in the configured database are inspected.
+            visible_fields (Sequence[str]): Non-secret fields whose values
+                each record should carry in ``visible``, such as ``("note",)``.
+                The store cannot tell secret fields apart, so callers must
+                name only fields that are safe to display.
 
         Returns:
             list[SQLiteCredentialRecord]: Service names, encrypted field names,
@@ -1595,6 +1603,9 @@ class SQLiteCredentialStore:
                     fields=tuple(sorted(values)),
                     created_at=str(row["created_at"]),
                     updated_at=str(row["updated_at"]),
+                    visible={
+                        name: values[name] for name in visible_fields if name in values
+                    },
                 )
             )
         return records

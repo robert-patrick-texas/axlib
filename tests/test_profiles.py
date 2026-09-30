@@ -13,6 +13,7 @@ import pytest
 from axlib.credentials.profiles import (
     INFOBLOX_PROFILE,
     NETWORK_PROFILE,
+    NOTE_MAX_LENGTH,
     get_profile,
     main,
     missing_required,
@@ -22,7 +23,9 @@ from axlib.credentials.profiles import (
 
 
 def test_profiles_match_the_lookup_helpers() -> None:
-    assert NETWORK_PROFILE.field_names == ("netuser", "netpass", "netenable")
+    assert NETWORK_PROFILE.field_names == ("netuser", "netpass", "netenable", "note")
+    assert NETWORK_PROFILE.lookup_names == ("netuser", "netpass", "netenable")
+    assert INFOBLOX_PROFILE.lookup_names == ("ibgrid", "ibuser", "ibpass")
     assert NETWORK_PROFILE.required_names == ("netuser", "netpass")
     assert INFOBLOX_PROFILE.required_names == ("ibgrid", "ibuser", "ibpass")
     assert get_profile("infoblox") is INFOBLOX_PROFILE
@@ -36,6 +39,7 @@ def test_profiles_match_the_lookup_helpers() -> None:
         (("ibgrid", "ibpass"), INFOBLOX_PROFILE),
         (("netuser",), NETWORK_PROFILE),
         (("legacy",), NETWORK_PROFILE),
+        (("ibgrid", "ibuser", "ibpass", "note"), INFOBLOX_PROFILE),
         ((), NETWORK_PROFILE),
     ],
 )
@@ -67,9 +71,20 @@ def test_standalone_listing_as_table_and_json() -> None:
     table = StringIO()
     assert main([], stream=table) == 0
     lines = table.getvalue().splitlines()
-    assert lines[0].split() == ["PROFILE", "FIELD", "REQUIRED", "SECRET", "DESCRIPTION"]
+    assert lines[0].split() == [
+        "PROFILE",
+        "FIELD",
+        "REQUIRED",
+        "SECRET",
+        "LOOKUP",
+        "DESCRIPTION",
+    ]
     assert any(
-        line.split()[:4] == ["network", "netpass", "yes", "yes"] for line in lines
+        line.split()[:5] == ["network", "netpass", "yes", "yes", "yes"]
+        for line in lines
+    )
+    assert any(
+        line.split()[:5] == ["infoblox", "note", "no", "no", "no"] for line in lines
     )
 
     as_json = StringIO()
@@ -81,4 +96,28 @@ def test_standalone_listing_as_table_and_json() -> None:
         "label": "Enable secret",
         "secret": True,
         "required": False,
+        "lookup": True,
     }
+
+
+def test_note_is_optional_and_validated_in_every_profile() -> None:
+    for profile in (NETWORK_PROFILE, INFOBLOX_PROFILE):
+        assert validate_values({"note": "  lab only  "}, profile, creating=False) == {
+            "note": "lab only"
+        }
+    with pytest.raises(ValueError, match="cannot be blank"):
+        validate_values({"note": "   "}, NETWORK_PROFILE, creating=False)
+    with pytest.raises(ValueError, match=f"at most {NOTE_MAX_LENGTH}"):
+        validate_values(
+            {"note": "x" * (NOTE_MAX_LENGTH + 1)}, NETWORK_PROFILE, creating=False
+        )
+    for unsafe in ("two\nlines", "bell\a", "escape \x1b[31m"):
+        with pytest.raises(ValueError, match="control characters"):
+            validate_values({"note": unsafe}, NETWORK_PROFILE, creating=False)
+    # The note is never required, and accented text is fine.
+    created = validate_values(
+        {"netuser": "ops", "netpass": "pw", "note": "équipe réseau"},
+        NETWORK_PROFILE,
+        creating=True,
+    )
+    assert created["note"] == "équipe réseau"

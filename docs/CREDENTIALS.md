@@ -99,7 +99,7 @@ axlib credential-db delete --service "$USER" --yes
 axlib credential-db rotate-key --generate-key --yes
 ```
 
-Both CLIs also support `--from-env FIELD=ENV_VAR`, `--dry-run` where applicable, and `list --json`. Commands print field names but never credential values.
+Both CLIs also support `--from-env FIELD=ENV_VAR`, `--dry-run` where applicable, and `list --json`. Commands print field names but never credential values; the only value a listing shows is the record's non-secret note (see [Notes](#notes)).
 
 `update --remove FIELD` deletes an optional field such as `netenable`; required fields cannot be removed (delete the whole service instead). If a change is saved but the Redis cache cannot be cleared, the command prints `status=...` and `cache=stale`, explains on standard error how long the old cached value may be used, and exits with status 1.
 
@@ -109,14 +109,33 @@ A profile lists the fields one lookup helper expects. `add` and `update` accept 
 
 | Profile | Fields (required in bold) | Read by |
 | --- | --- | --- |
-| `network` | **netuser**, **netpass**, netenable | `ax.getkeys()` |
-| `infoblox` | **ibgrid**, **ibuser**, **ibpass** | `ax.getinfoblox()` |
+| `network` | **netuser**, **netpass**, netenable, note | `ax.getkeys()` |
+| `infoblox` | **ibgrid**, **ibuser**, **ibpass**, note | `ax.getinfoblox()` |
 
 ```bash
 axlib credential-db add --service infoblox --profile infoblox \
     --set ibgrid=gm.example.net --set ibuser=api --prompt ibpass
 python -m axlib.credentials.profiles --json
 ```
+
+### Notes
+
+Every record may have a `note`: one line of up to 120 characters for the
+people who manage the store, such as who owns a shared account or when a lab
+account expires. No lookup helper reads it, so a note never changes what
+`ax.getkeys()` returns, and `axlib netenv-set` never exports it. It is
+encrypted with the other fields but is not secret, so listings show it:
+
+```bash
+axlib credential-db update --service network-shared --set note="NOC team account; owner J. Smith"
+axlib credential-db update --service network-shared --remove note
+axlib credential-db list               # NOTE is the last column
+axlib credential-db list --json        # "note": "..." or null
+```
+
+A note is stripped of leading and trailing spaces. A blank note, a note over
+120 characters, and a note with a line break or other control character are
+refused. `python -m axlib.credentials.profiles` marks the note `LOOKUP no`.
 
 ## Python administration API
 

@@ -58,24 +58,31 @@ ssh -t jumphost axlib credential-tui
  │ SQLite store  /var/lib/axlib/credentials.db                                │
  │ key /etc/axlib/sqlite-aes256.key  ·  4 records  ·  shared network-shared   │
  │                                                                            │
- │ / filter services                                                          │
+ │ / filter services and notes                                                │
  │                                                                            │
- │  SERVICE        FIELDS                     UPDATED     NOTES               │
+ │  SERVICE        FIELDS                     UPDATED     ADVICE           NO │
  │  akumar         netuser                    2026-09-26  missing netpass     │
- │  infoblox       ibgrid,ibuser,ibpass       2026-09-26                      │
- │  jsmith         netuser,netpass,netenable  2026-09-26  you                 │
- │  networkshared  netuser,netpass,netenable  2026-09-26  shared fallback     │
+ │  infoblox       ibgrid,ibuser,ibpass       2026-09-26                   gr │
+ │  jsmith         netuser,netpass,netenable  2026-09-26  you              co │
+ │  networkshared  netuser,netpass,netenable  2026-09-26  shared fallback  la │
  │                                                                            │
+ │ Note  core routers, DC1 and DC2                                            │
  │ a Add e Edit d Delete / Filter s Store k Rotate key r Refresh q Quit       │
  ╰───────────────────────────────────────────────────────────── SQLite store ─╯
 
 ```
 
 The table shows field **names** only. Credential values are never displayed.
+The one value it shows is each record's **note**: free text that you write,
+such as "core routers, DC1 and DC2". The **NOTE** column holds the first 40
+characters of it, and on a narrow terminal it continues off the right edge.
+The line below the table always shows the whole note of the highlighted
+record.
 
-The **NOTES** column explains how `ax.getkeys()` will treat each record:
+The **ADVICE** column is written by axlib, not by you. It explains how
+`ax.getkeys()` will treat each record:
 
-| Note | Meaning |
+| Advice | Meaning |
 | --- | --- |
 | `you` | This is your own record: `ax.getkeys()` looks up `$USER` first. |
 | `shared fallback` | The configured `credentials.shared_service`, used when a personal record is missing or incomplete. |
@@ -89,7 +96,7 @@ The **NOTES** column explains how `ax.getkeys()` will treat each record:
 | `a` | Add a record. |
 | `e` or `Enter` | Edit the highlighted record. |
 | `d` | Delete the highlighted record. You must type its service name to confirm. |
-| `/` | Filter the table by service name. `Esc` or `Enter` returns to the table. |
+| `/` | Filter the table by service name or note text. `Esc` or `Enter` returns to the table. |
 | `s` | Switch between the SQLite and text-file stores (when both are configured). |
 | `k` | Rotate the store's encryption key. You must type `rotate` to confirm. |
 | `i` | Initialize the store (shown only when the store is not ready). |
@@ -117,9 +124,16 @@ As you type the service name, the form shows the name it will be stored under.
 Dots, dashes, and underscores are removed (`first.last` is stored as
 `firstlast`), exactly as `ax.getkeys()` does when it looks the name up.
 
-Passwords are typed twice. The **Edit** form pre-fills the username, leaves
-passwords blank (a blank password keeps the current one), and offers a
-**Remove** tick box for optional fields such as the enable secret.
+Every profile also has an optional **Note**: one line of up to 120
+characters, such as who owns a shared account or when a lab account expires.
+`ax.getkeys()` and `axlib netenv-set` never read it. It is encrypted with the
+rest of the record but is not secret, so the table, the edit form, and
+`axlib credential-db list` show it.
+
+Passwords are typed twice. The **Edit** form pre-fills the username and the
+note, and leaves passwords blank (a blank password keeps the current one).
+Clearing the note removes it. A **Remove** tick box removes the optional
+enable secret.
 
 Every change also clears that service from the Redis cache, when Redis caching
 is enabled, so scripts pick up the new password immediately. If Redis cannot be

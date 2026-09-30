@@ -167,6 +167,41 @@ def test_annotations_explain_lookup_behavior(
 
 
 @BOTH_KINDS
+def test_listing_carries_the_note_but_never_secret_values(
+    store_settings: CredentialSettings, kind: StoreKind
+) -> None:
+    admin = _ready(store_settings, kind)
+    admin.add("ops", {"netuser": "ops", "netpass": "pw", "note": " DC2 jump host "})
+    admin.add("lab", {"netuser": "lab", "netpass": "pw"})
+
+    records = {record.service: record for record in admin.list_records()}
+    assert records["ops"].visible == {"note": "DC2 jump host"}
+    assert records["ops"].fields == ("netpass", "netuser", "note")
+    assert records["lab"].visible == {}
+    notes = {
+        item.record.service: item.note for item in admin.annotate(records.values())
+    }
+    assert notes == {"ops": "DC2 jump host", "lab": None}
+
+    admin.update("ops", remove=["note"])
+    (ops,) = [record for record in admin.list_records() if record.service == "ops"]
+    assert ops.visible == {}
+
+
+def test_a_note_in_both_stores_is_not_reported_as_overridden(
+    store_settings: CredentialSettings,
+) -> None:
+    sqlite = _ready(store_settings, StoreKind.SQLITE)
+    sqlite.add("ops", {"netuser": "ops", "netpass": "a", "note": "in SQLite"})
+    text_file = _ready(store_settings, StoreKind.FILE)
+    text_file.add("ops", {"netuser": "ops", "netpass": "b", "note": "in the file"})
+
+    (item,) = text_file.annotate(text_file.list_records())
+    # ax.getkeys() never reads the note, so SQLite's note hides nothing.
+    assert [note.text for note in item.notes] == ["SQLite overrides netpass,netuser"]
+
+
+@BOTH_KINDS
 def test_rotate_key_keeps_records_readable(
     store_settings: CredentialSettings, kind: StoreKind
 ) -> None:

@@ -116,7 +116,7 @@ for record in store.list_records():
     print(record.updated_at)
 ```
 
-Listing decrypts each payload to determine field names, so it also detects corrupted records or the wrong encryption key.
+Listing decrypts each payload to determine field names, so it also detects corrupted records or the wrong encryption key. As with SQLite, `list_records(visible_fields=("note",))` also returns each record's note in `record.visible`.
 
 ## generate_credential_file_key_file()
 
