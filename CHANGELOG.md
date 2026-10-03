@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.5 - 2026-10-03
 
 - Added `axlib radius` (also `axlib-radius` and `python -m axlib.radius`), a RADIUS client that checks a username and password against a RADIUS server, as a network device does. It sends one PAP `Access-Request` to UDP port 1812 (or `--port`), resends on timeout, and prints `Access-Accept`, `Access-Reject`, or `Access-Challenge` with the reply's attributes (Reply-Message, Cisco and other vendor attributes, and more), or one JSON object with `--json`. Exit status: 0 accept, 1 reject or challenge, 2 error, 3 no reply. The password and shared secret come from an environment variable, standard input, a secret file, or an echo-off prompt.
 - Added the Python API `axlib.radius.authenticate()`, which returns a `RadiusResult` and never holds the password or secret, plus the packet functions `hide_password()`, `build_access_request()`, and `verify_response()`. Every request carries a `Message-Authenticator` (BlastRADIUS, CVE-2024-3596), and every reply's Response Authenticator, and its Message-Authenticator when present, is verified. Standard library only.

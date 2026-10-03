@@ -2,6 +2,75 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.5
+
+### Overview
+
+This release adds a RADIUS login check. `axlib radius` asks a RADIUS server whether it accepts a username and password, the same way a switch, router, or firewall does at login. Operators can use it to find out why a device login fails: whether the server rejects the account, the request never reaches the server, or the two sides have different shared secrets. The same check is a Python function, `axlib.radius.authenticate()`. Nothing else changes.
+
+### RADIUS login check
+
+```bash
+axlib radius 192.0.2.10 -u "$NETUSER" --password-env NETPASS --secret-file /etc/axlib/radius.secret
+```
+
+```text
+Access-Accept from 192.0.2.10 port 1812 for 'alice' in 4.2 ms (attempt 1)
+  Reply-Message: Welcome, alice
+  Vendor-Specific: vendor=9 type=1 value=shell:priv-lvl=15
+  Message-Authenticator: verified
+```
+
+- It sends one PAP `Access-Request` to UDP port 1812, or the port given with `--port`. After `--timeout` seconds it resends the identical packet, up to `--retries` times.
+- It prints the answer with the reply's attributes, or one JSON object with `--json`. The exit status is 0 for Access-Accept, 1 for Access-Reject or Access-Challenge, 2 for an error, and 3 when no reply arrives, so scripts and monitoring checks need no parsing.
+- The password comes from an environment variable (`--password-env NETPASS` works after `netenv-set`), from standard input, or from an echo-off prompt. The shared secret comes from a file, an environment variable, or a prompt. `--password` and `--secret` also work, but the help text warns that other users can see them in `ps`.
+- Errors explain the likely cause. If no reply arrives, the message lists a blocked port, this host not being configured as a client, and a wrong secret that the server drops silently. A reply that fails verification is reported as a probable shared-secret mismatch, and a closed port as "nothing is listening".
+
+The command is also available as `axlib-radius` and `python -m axlib.radius`. `docs/RADIUS.md` covers the options, the Python API, how the protocol works, and troubleshooting.
+
+### Python API
+
+```python
+from axlib.radius import authenticate
+
+result = authenticate("192.0.2.10", "alice", password, secret)  # port=1812 by default
+print(result.reply.code_name, result.accepted, result.reply.reply_messages)
+```
+
+A reject is a result, not an exception. `RadiusTimeoutError` and `RadiusError` mean that there is no answer that can be trusted. The result never holds the password or the secret. The packet functions `hide_password()`, `build_access_request()`, and `verify_response()` are public, so they can be studied and tested on their own.
+
+### Security
+
+- Every request carries a `Message-Authenticator`, the defense against the BlastRADIUS reply-forgery attack (CVE-2024-3596). Servers configured to require it accept these requests.
+- Every reply's Response Authenticator is verified, and so is its Message-Authenticator when it has one. The output reports whether the server sent one, because a server that never does may still need the BlastRADIUS update.
+- PAP hides the password only with MD5 and the shared secret. Run checks over a trusted management network.
+
+### Compatibility
+
+- New module and commands only: `axlib.radius`, `axlib radius`, and `axlib-radius`. No existing command, API, storage format, or `ax.getkeys()` behavior changes.
+- No new dependencies. The module uses only the Python standard library, and its MD5 calls are marked `usedforsecurity=False` so they also work under FIPS-mode Python.
+- Only PAP is supported. CHAP, MS-CHAP, EAP, accounting, and RADIUS over TLS are not, and an Access-Challenge, such as an OTP prompt, is reported but not answered.
+- A shared host upgrades in place with `sudo ./axlib-1.0.5/install.sh`. The installer needs no new options.
+
+### Validation
+
+Validated on Python 3.14.3 and, from the built wheel, on Python 3.11.16:
+
+```text
+Ruff format and lint (all rules, including docs code): passed
+ty static type check:                                  passed
+Educational docstring audit:                           passed
+Main pytest suite:                                     219 passed
+RADIUS tests from the built wheel, Python 3.11 and
+  3.14 (RFC 2865 section 7.1 vectors, forged and
+  malformed replies, local UDP server):                41 passed
+Interoperability with a pyrad server: request,
+  hidden password, and Message-Authenticator
+  accepted; Accept with Cisco vendor attribute and
+  Reject verified; exit statuses 0, 1, and 2 (closed
+  port) on both Python versions:                       passed
+```
+
 ## 1.0.4
 
 ### Overview
