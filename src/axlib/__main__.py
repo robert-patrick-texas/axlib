@@ -5,8 +5,8 @@
 
 The package command groups text processing, credential diagnostics, AES-256-GCM
 text-file management, encrypted SQLite management, the optional full-screen
-credential manager, and the shell-session credential loaders behind
-discoverable subcommands. Existing module commands and
+credential manager, the shell-session credential loaders, and a RADIUS
+login check behind discoverable subcommands. Existing module commands and
 Python imports remain available, so engineers can move gradually from a shell
 pipeline to reusable Python functions.
 
@@ -38,6 +38,7 @@ COMMANDS = (
     "credential-tui",
     "netenv-set",
     "netenv-clear",
+    "radius",
 )
 
 
@@ -77,8 +78,8 @@ def _load_command(command: str) -> CommandMain:
 
     Args:
         command (str): One of ``tf``, ``credentials``, ``credential-file``,
-            ``credential-db``, ``credential-tui``, ``netenv-set``, or
-            ``netenv-clear``.
+            ``credential-db``, ``credential-tui``, ``netenv-set``,
+            ``netenv-clear``, or ``radius``.
 
     Returns:
         CommandMain: Callable accepting an optional argument sequence.
@@ -117,6 +118,10 @@ def _load_command(command: str) -> CommandMain:
         from .credentials.netenv import clear_main
 
         return clear_main
+    if command == "radius":
+        from .radius import main
+
+        return main
     raise ValueError(f"Unsupported axlib command: {command}")
 
 

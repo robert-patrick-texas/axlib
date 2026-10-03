@@ -17,6 +17,7 @@ Axlib is an educational Python package for Network Operations staff building aut
 - An optional full-screen credential manager (TUI) gives non-developers an "easy button" for their `ax.getkeys()` records, locally or over SSH.
 - Every record may carry a short, non-secret note (owner, purpose, expiry) that the TUI and `list` show and lookups ignore.
 - `axlib netenv-set` / `axlib netenv-clear` load `NETUSER`, `NETPASS`, and `NETENABLE` into an operator's shell at SSH login, and clear them again.
+- `axlib radius` checks a username and password against a RADIUS server, as a network device would, and reports Accept, Reject, or Challenge.
 
 ## Install
 
@@ -108,6 +109,23 @@ print(admin.status().state)  # "ready"
 
 `python -m axlib.credentials.admin --json` prints a health check of every configured store, and `python -m axlib.credentials.profiles` lists the fields each record profile expects.
 
+## RADIUS login check
+
+When a device login fails, ask the RADIUS server directly whether it accepts the account:
+
+```bash
+axlib radius 192.0.2.10 -u "$NETUSER" --password-env NETPASS --secret-file /etc/axlib/radius.secret
+```
+
+```python
+from axlib.radius import authenticate
+
+result = authenticate("192.0.2.10", "alice", password, secret)  # port=1812 by default
+print(result.reply.code_name, result.accepted)
+```
+
+The exit status is 0 for Access-Accept, 1 for Reject or Challenge, 2 for errors, and 3 when no reply arrives. `--json` prints the full result. The module uses only the standard library and is checked against the RFC 2865 test vectors. See `docs/RADIUS.md`.
+
 ## Shared server example
 
 ```toml
@@ -157,6 +175,7 @@ See `docs/TEXT_FILTERS.md` for filter semantics.
 - `docs/CREDENTIALS.md` — lookup precedence, configuration, CLI, administration API, and permissions.
 - `docs/CREDENTIAL_TUI.md` — operator guide for the optional full-screen credential manager.
 - `docs/NETENV.md` — loading credentials into SSH sessions with `netenv-set` / `netenv-clear`: setup, warnings, and troubleshooting.
+- `docs/RADIUS.md` — checking a login against a RADIUS server with `axlib radius`: options, exit status, Python API, how it works, and troubleshooting.
 - `docs/CREDENTIAL_FILE.md` — full encrypted text-store API with examples for every method.
 - `docs/SQLITE_CREDENTIALS.md` — full SQLite API with examples for every method.
 - `docs/TEXT_FILTERS.md` — pipeline and Python text-processing examples.

@@ -19,6 +19,7 @@ keywords = [
     "sqlite",
     "aes-gcm",
     "redis",
+    "radius",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -46,6 +47,7 @@ axlib-credential-db = "axlib.credentials.sqlite_cli:main"
 axlib-credential-tui = "axlib.credentials.tui:main"
 axlib-netenv-set = "axlib.credentials.netenv:set_main"
 axlib-netenv-clear = "axlib.credentials.netenv:clear_main"
+axlib-radius = "axlib.radius:main"
 axlib-tf = "axlib.tf.__main__:main"
 axlib-tf-include = "axlib.tf.incfile:main"
 axlib-tf-comments = "axlib.tf.rmcomment:main"
