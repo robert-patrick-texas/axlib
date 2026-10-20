@@ -21,7 +21,13 @@ from axlib.parse.errors import (
     TemplateParseError,
 )
 from axlib.parse.settings import TemplateSource
-from axlib.parse.snapshot import Snapshot, load_snapshot, main, render
+from axlib.parse.snapshot import (
+    Snapshot,
+    load_snapshot,
+    main,
+    render,
+    report_problems,
+)
 
 pytestmark = pytest.mark.usefixtures("clean_parse_environment")
 
@@ -151,7 +157,8 @@ def test_snapshot_json_round_trip(catalog: TemplateCatalog) -> None:
     assert load_snapshot(text) == snapshot
     assert load_snapshot("sw1#show clock\n") is None
     assert load_snapshot("{not json") is None
-    assert load_snapshot('{"format": "something else"}') is None
+    with pytest.raises(SnapshotFormatError, match="not an axlib parse snapshot"):
+        load_snapshot('{"format": "something else"}')
     with pytest.raises(SnapshotFormatError, match="version"):
         load_snapshot('{"format": "axlib-parse", "version": 99, "results": []}')
     with pytest.raises(SnapshotFormatError, match="invalid snapshot result"):
@@ -160,6 +167,47 @@ def test_snapshot_json_round_trip(catalog: TemplateCatalog) -> None:
         Snapshot.from_dict(
             {"format": "axlib-parse", "version": 1, "results": [], "problems": [{}]}
         )
+
+
+def test_damaged_snapshot_is_an_error_not_a_capture(
+    catalog: TemplateCatalog,
+) -> None:
+    text = render(parse_paths([str(EXAMPLES / "before")], catalog=catalog), "json")
+
+    # A truncated snapshot must not be read as a capture with no commands.
+    with pytest.raises(SnapshotFormatError, match=r"^not valid JSON: "):
+        load_snapshot(text[:3000])
+    with pytest.raises(SnapshotFormatError, match=r"^not valid JSON: "):
+        load_snapshot('\n  {\n  "format": "axlib-parse",')
+
+
+def test_junos_capture_starting_with_a_brace_is_not_a_snapshot() -> None:
+    capture = "{master:0}\nadmin@mx1> show lldp neighbors\n"
+
+    assert load_snapshot(capture) is None
+
+
+def test_skip_summary_counts_every_reason(
+    tmp_path: Path, catalog: TemplateCatalog, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "image.png").write_bytes(b"\x89PNG\x00")
+    (tmp_path / "sw1.log").write_text(
+        "sw1#terminal length 0\nsw1#show running-config | include hostname\n"
+        "hostname sw1\n",
+        encoding="utf-8",
+    )
+    snapshot = parse_paths([str(tmp_path)], catalog=catalog)
+
+    report_problems(snapshot, program="test")
+    summary = capsys.readouterr().err
+    report_problems(snapshot, program="test", verbose=True)
+    verbose = capsys.readouterr().err.splitlines()
+
+    # A binary file, a command with no template, and filtered output.
+    assert summary == "test: skipped 3 command(s) (-v lists them and why)\n"
+    assert verbose[0] == "test: skipped: image.png -: binary file"
+    assert "no template for 'terminal length 0'" in verbose[1]
+    assert "has filtered output" in verbose[2]
 
 
 def test_table_and_jsonl_formats(catalog: TemplateCatalog) -> None:
@@ -203,7 +251,8 @@ def test_parse_command_writes_a_snapshot(
     saved = load_snapshot(output.read_text(encoding="utf-8"))
 
     assert status == 0
-    assert "skipped 2 command(s) with no template (-v lists them)" in summary
+    # One is "terminal length 0" (no template), the other has filtered output.
+    assert "axlib parse: skipped 2 command(s) (-v lists them and why)" in summary
     assert saved is not None
     assert len(saved.results) == 9
     assert verbose_status == 0

@@ -550,15 +550,18 @@ def bundled_template_dir(
     """Locate the ntc-templates collection without importing it.
 
     ``NTC_TEMPLATES_DIR`` replaces the collection, as it does for netmiko and
-    ntc-templates themselves; that directory needs its own ``index``.
+    ntc-templates themselves.  It is read like any template directory: by
+    its ``index`` when it has one, else by file name.  (netmiko requires an
+    ``index`` there; axlib does not.)
 
     Args:
         environ (Mapping[str, str] | None): Environment, for tests; defaults
             to :data:`os.environ`.
 
     Returns:
-        TemplateSource | None: The collection's ``templates`` directory, or
-            ``None`` when ntc-templates is not installed.
+        TemplateSource | None: The ``NTC_TEMPLATES_DIR`` directory when it is
+            set, else the collection's ``templates`` directory, or ``None``
+            when ntc-templates is not installed.
 
     Raises:
         None: A missing package is reported by returning ``None``.

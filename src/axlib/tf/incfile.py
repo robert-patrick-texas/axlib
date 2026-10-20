@@ -152,6 +152,30 @@ def read_text_file(path: Path, encoding: str = "utf-8") -> str | None:
         return None
 
 
+def _end_like_directive(inserted: str, directive_line: str) -> str:
+    """Give inserted text a final line ending when the file lacked one.
+
+    Args:
+        inserted (str): Included file content, expanded or not.
+        directive_line (str): The directive line the content replaces,
+            including its line ending if it has one.
+
+    Returns:
+        str: ``inserted`` unchanged when it is empty or already ends with a
+            line ending; otherwise ``inserted`` followed by the directive
+            line's LF, CRLF, or CR ending (nothing if the directive had none).
+
+    Raises:
+        None: Suffix checks and slicing are deterministic.
+    """
+    if not inserted or inserted.endswith(("\n", "\r")):
+        return inserted
+    # Without this, a fragment saved without a final newline would run into
+    # the line after the directive ("ntp server 192.0.2.1end").  Reusing the
+    # directive's own ending keeps a CRLF template CRLF.
+    return inserted + directive_line[len(directive_line.rstrip("\r\n")) :]
+
+
 def _expand_includes_internal(
     text: str,
     *,
@@ -196,24 +220,17 @@ def _expand_includes_internal(
             current_base_dir,
         )
         included_text = read_text_file(include_path, encoding=encoding)
-        if included_text is None:
-            # Preserving an unresolved directive makes a missing fragment visible
-            # during review rather than silently producing an incomplete config.
+        if included_text is None or include_path in active_stack:
+            # Keeping the original line makes a missing fragment or a cycle
+            # visible during review, rather than silently producing an
+            # incomplete config or recursing forever.  The cycle check comes
+            # before the depth check so a file is never inserted into itself.
             output_parts.append(line)
             continue
         if not recursive or current_depth >= max_depth:
-            output_parts.append(included_text)
-            continue
-        if include_path in active_stack:
-            # A cycle is kept as the original line so engineers can identify the
-            # offending relationship without an infinite recursion or data loss.
-            output_parts.append(line)
-            continue
-
-        next_stack = set(active_stack)
-        next_stack.add(include_path)
-        output_parts.append(
-            _expand_includes_internal(
+            inserted = included_text
+        else:
+            inserted = _expand_includes_internal(
                 included_text,
                 pattern=pattern,
                 encoding=encoding,
@@ -221,9 +238,9 @@ def _expand_includes_internal(
                 recursive=True,
                 max_depth=max_depth,
                 current_depth=current_depth + 1,
-                active_stack=next_stack,
+                active_stack=active_stack | {include_path},
             )
-        )
+        output_parts.append(_end_like_directive(inserted, line))
     return "".join(output_parts)
 
 
@@ -235,6 +252,7 @@ def expand_includes(
     max_depth: int = 20,
     encoding: str = "utf-8",
     base_dir: str | os.PathLike[str] | None = None,
+    source_path: str | os.PathLike[str] | None = None,
 ) -> str:
     """Expand include directives in a block of text.
 
@@ -247,7 +265,12 @@ def expand_includes(
             includes.  Zero inserts direct files without scanning them again.
         encoding (str): Codec used to read include targets.
         base_dir (str | os.PathLike[str] | None): Directory for relative paths in
-            the initial text; defaults to the current working directory.
+            the initial text; defaults to the parent of ``source_path``, or to
+            the current working directory when there is no source file.
+        source_path (str | os.PathLike[str] | None): File that ``text`` was
+            read from, or ``None`` for text without one, such as standard
+            input.  The file counts as already being expanded, so an include
+            that leads back to it is kept as a blocked cycle.
 
     Returns:
         str: Text with all allowed, readable includes expanded.
@@ -265,8 +288,13 @@ def expand_includes(
         list(DEFAULT_DIRECTIVES) if directives is None else list(directives)
     )
     pattern = build_directive_pattern(directive_list)
-    initial_path = Path(base_dir) if base_dir is not None else Path.cwd()
-    initial_base = normalize_path(initial_path)
+    source = normalize_path(Path(source_path)) if source_path is not None else None
+    if base_dir is not None:
+        initial_base = normalize_path(Path(base_dir))
+    elif source is not None:
+        initial_base = source.parent
+    else:
+        initial_base = normalize_path(Path.cwd())
     return _expand_includes_internal(
         text,
         pattern=pattern,
@@ -275,7 +303,9 @@ def expand_includes(
         recursive=recursive,
         max_depth=max_depth,
         current_depth=0,
-        active_stack=set(),
+        # Starting the chain with the source file blocks a cycle back to it on
+        # the first repeat, instead of inserting its content one extra time.
+        active_stack={source} if source is not None else set(),
     )
 
 
@@ -368,13 +398,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.max_depth < 0:
         parser.error("--max-depth must be >= 0")
 
-    if args.base_dir is not None:
-        base_dir = args.base_dir
-    elif args.input != "-":
-        base_dir = Path(args.input).expanduser().resolve(strict=False).parent
-    else:
-        base_dir = Path.cwd()
-
     try:
         text = read_text(args.input, encoding=args.encoding)
         output = expand_includes(
@@ -383,13 +406,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             recursive=not args.no_recursive,
             max_depth=args.max_depth,
             encoding=args.encoding,
-            base_dir=base_dir,
+            base_dir=args.base_dir,
+            # Standard input has no path, so only a named file can be blocked
+            # as a cycle back to the input or supply the default base directory.
+            source_path=None if args.input == "-" else args.input,
         )
         write_text(args.output, output, encoding=args.encoding)
-    except ValueError as exc:
-        parser.error(str(exc))
+    # UnicodeDecodeError and UnicodeEncodeError are ValueError subclasses, and
+    # Python uses the first matching handler, so the operational errors must be
+    # caught before ValueError, which here means a bad option value.
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
         return render_cli_error(PROGRAM, exc)
+    except ValueError as exc:
+        parser.error(str(exc))
     return 0
 
 

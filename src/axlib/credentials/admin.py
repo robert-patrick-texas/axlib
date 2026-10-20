@@ -871,6 +871,24 @@ class StoreAdmin:
         key = secrets.token_bytes(KEY_LENGTH) if new_key is None else new_key
         return self.store.rotate_key(key)
 
+    def check_key_rotation(self) -> None:
+        """Refuse a key rotation early, with the error :meth:`rotate_key` raises.
+
+        ``rotate-key --dry-run`` calls this so it refuses exactly what a real
+        rotation refuses: the store's direct key variable is set, no key file
+        is configured, or an earlier rotation left ``<key_file>.rotating``.
+
+        Args:
+            None: The checks use this store's settings and files.
+
+        Returns:
+            None: Rotation may proceed.
+
+        Raises:
+            CredentialConfigurationError: If the rotation would be refused.
+        """
+        self.store.check_key_rotation()
+
     def load_key_file(self, path: Path) -> bytes:
         """Read and validate a replacement key from a protected file.
 

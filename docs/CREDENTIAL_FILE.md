@@ -199,7 +199,7 @@ generate_credential_file_key_file(
 
 The keyword arguments are `mode` (default `0o640`), `owner` (default `None`, keep the current user), and `group` (default `"netops"`; `None` keeps the current group). Use `mode=0o600, group=None` for a private key. A missing parent directory is created with mode `2750`, or `0700` when `group` is `None`.
 
-Existing key files are never overwritten: the function raises `CredentialBackendError` instead. An invalid mode or an unknown owner or group raises `CredentialConfigurationError` and leaves no key file behind. The function returns the key as URL-safe Base64 text; do not print or log it.
+Existing key files are never overwritten: the function raises `CredentialBackendError` instead. An invalid mode or an unknown owner or group raises `CredentialConfigurationError` before any directory or file is created. The function returns the key as URL-safe Base64 text; do not print or log it.
 
 ## read_credential_file_key()
 
@@ -232,7 +232,7 @@ Rotation requires `credential_file.key_file` / `AXLIB_CREDENTIAL_FILE_KEY_FILE`;
 - If `axlib credential-file list` still works, the credential file was not changed. Remove the staging file and rotate again.
 - If it fails with "key verification failed", the credential file already needs the new key. Move the staging file over the key file to finish the rotation.
 
-`rotate_key()` refuses to start when that staging file already exists, so an interrupted rotation cannot be silently retried over an unresolved one. A wrong-length key, a set `AXLIB_CREDENTIAL_FILE_KEY` (even when `key_file` is also configured), a missing `key_file`, or a leftover staging file raises `CredentialConfigurationError`.
+`rotate_key()` refuses to start when that staging file already exists, so an interrupted rotation cannot be silently retried over an unresolved one. A wrong-length key, a set `AXLIB_CREDENTIAL_FILE_KEY` (even when `key_file` is also configured), a missing `key_file`, or a leftover staging file raises `CredentialConfigurationError`. `store.check_key_rotation()` makes the last three checks without changing anything and returns the key file and staging file paths.
 
 From the CLI:
 
@@ -252,7 +252,7 @@ status=rotated
 rotated=1
 ```
 
-Use `--new-key-file PATH` instead of `--generate-key` to rotate to a key produced by another process (for example a KMS export). The file must hold the key as URL-safe Base64 text. The key it holds is written to the configured key file (as URL-safe Base64, so the text may not match byte for byte) and the file itself is left in place, so remove it once the rotation is verified. `--dry-run` checks the `--new-key-file` and prints the record count without changing anything; it does not check for a set `AXLIB_CREDENTIAL_FILE_KEY` or a leftover staging file. `--yes` is required to proceed because every record is re-encrypted; without it the command exits with status 2.
+Use `--new-key-file PATH` instead of `--generate-key` to rotate to a key produced by another process (for example a KMS export). The file must hold the key as URL-safe Base64 text. The key it holds is written to the configured key file (as URL-safe Base64, so the text may not match byte for byte) and the file itself is left in place, so remove it once the rotation is verified. `--dry-run` makes the same refusal checks as a real rotation (a set `AXLIB_CREDENTIAL_FILE_KEY`, no `key_file`, or a leftover staging file) and fails with the same message and exit status. It also checks the `--new-key-file`, then prints the record count without changing anything. `--yes` is required to proceed because every record is re-encrypted; without it the command exits with status 2.
 
 ## Familiar password-method facade
 
@@ -324,7 +324,7 @@ The exit status is:
 
 - `0` on success, including a dry run.
 - `1` when the store reports an error (the message goes to standard error, prefixed `axlib-credential-file:`), when `delete` finds no such service (`status=not-found`), or when a change was saved but the Redis cache could not be cleared (`cache=stale`).
-- `2` for a command-line error, such as an unknown option, an invalid service or field name, a field the profile does not allow, a missing required field, or a missing `--yes`.
+- `2` for a command-line error, such as an unknown option, an invalid service or field name, a field the profile does not allow, a missing required field, a missing `--yes`, or input that ends before a `--prompt` value is entered.
 
 ## CLI symmetry with SQLite
 

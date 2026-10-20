@@ -8,7 +8,7 @@ in a capture (:mod:`axlib.parse.capture`) it chooses a template
 (:mod:`axlib.parse.templates`), runs TextFSM, and makes the records comparable
 (:mod:`axlib.parse.normalize`).  The result is a :class:`Snapshot`: every
 parsed command with its records, plus the commands that were skipped (no
-template) or failed (the template rejected the output).
+template, or filtered output) or failed (the template rejected the output).
 
 Saved as JSON, a snapshot taken before a maintenance window can be compared
 with one taken after it by ``axlib parse diff``.  Snapshots are sorted by
@@ -75,6 +75,12 @@ from .templates import (
 SNAPSHOT_FORMAT = "axlib-parse"
 SNAPSHOT_VERSION = 1
 OUTPUT_FORMATS = ("json", "jsonl", "table")
+# Help for -v, shared by "axlib parse" and "axlib parse diff".
+VERBOSE_HELP = "List each skipped command and why it was skipped."
+
+# A JSON object opens with "{" and then a quoted field name.  A bare "{" is
+# not enough: Junos prints "{master:0}" above its prompt in session logs.
+_JSON_OBJECT_START = re.compile(r'\s*\{\s*"')
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,8 +183,9 @@ class Problem:
     """A command that was not parsed.
 
     Attributes:
-        kind: ``skipped`` (no template) or ``failed`` (the template rejected
-            the output, or the command was ambiguous).
+        kind: ``skipped`` (no template, filtered output, or a binary file)
+            or ``failed`` (the template rejected the output, or the command
+            was ambiguous).
         message: Why.
         command: The command as captured.
         host: Host name, if known.
@@ -290,21 +297,31 @@ def load_snapshot(text: str) -> Snapshot | None:
         text (str): File contents.
 
     Returns:
-        Snapshot | None: The snapshot, or ``None`` when the text is not an
-            ``axlib parse`` JSON document (a capture, for example).
+        Snapshot | None: The snapshot, or ``None`` when the text does not
+            start like a JSON object (a capture, for example).
 
     Raises:
-        SnapshotFormatError: If the text is a snapshot of another version or
-            a damaged one.
+        SnapshotFormatError: If the text starts like a JSON object but is
+            not valid JSON (a truncated snapshot, for example), is JSON of
+            another kind, or is a snapshot of another version or a damaged
+            one.
     """
-    if not text.lstrip().startswith("{"):
+    if not _JSON_OBJECT_START.match(text):
         return None
     try:
         data = json.loads(text)
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as exc:
+        # Read as a capture, a damaged snapshot would quietly become a
+        # collection with no commands, and a diff would look plausible.
+        raise SnapshotFormatError(f"not valid JSON: {exc}") from exc
     if not isinstance(data, dict) or data.get("format") != SNAPSHOT_FORMAT:
-        return None
+        # No capture starts with '{"', so this is some other JSON file given
+        # by mistake; reading it as a capture would compare nothing.
+        found = data.get("format") if isinstance(data, dict) else None
+        raise SnapshotFormatError(
+            f"JSON but not an axlib parse snapshot (format {found!r}, "
+            f"expected {SNAPSHOT_FORMAT!r})"
+        )
     return Snapshot.from_dict(data)
 
 
@@ -728,9 +745,10 @@ def report_problems(snapshot: Snapshot, *, program: str, verbose: bool = False) 
         for item in skipped:
             print(f"{program}: skipped: {item.describe()}", file=sys.stderr)
     elif skipped:
+        # Commands are skipped for several reasons (no template, filtered
+        # output, a binary file), so the count names none of them.
         print(
-            f"{program}: skipped {len(skipped)} command(s) with no template "
-            "(-v lists them)",
+            f"{program}: skipped {len(skipped)} command(s) (-v lists them and why)",
             file=sys.stderr,
         )
 
@@ -790,7 +808,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "-v",
         "--verbose",
         action="store_true",
-        help="List every command skipped for lack of a template.",
+        help=VERBOSE_HELP,
     )
     return parser
 

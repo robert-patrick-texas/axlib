@@ -892,6 +892,31 @@ def _from_environment(variable: str, environ: Mapping[str, str]) -> str:
     return environ[variable]
 
 
+def _ask(prompt: Callable[[str], str], text: str, value: str, options: str) -> str:
+    """Prompt for one value, explaining end of input instead of failing blank.
+
+    Args:
+        prompt (Callable[[str], str]): Reads a value with echo disabled.
+        text (str): The prompt shown to the operator.
+        value (str): What is being read, such as ``password``.
+        options (str): The options a script should use instead.
+
+    Returns:
+        str: The value typed.
+
+    Raises:
+        EOFError: If input ends before a line is read.
+    """
+    try:
+        return prompt(text)
+    except EOFError as exc:
+        # getpass raises EOFError with no message when input ends: Ctrl-D at
+        # the prompt, or a script with no terminal and nothing on stdin.
+        raise EOFError(
+            f"input ended at the {value} prompt; in a script, use {options}."
+        ) from exc
+
+
 def _read_inputs(
     args: argparse.Namespace,
     environ: Mapping[str, str],
@@ -912,16 +937,28 @@ def _read_inputs(
     Raises:
         ValueError: If a variable is unset or the secret file is empty.
         OSError: If the secret file cannot be read.
-        EOFError: If a prompt has no input to read.
+        EOFError: If input ends before the password or secret is read.
     """
     if args.password is not None:
         password = args.password
     elif args.password_env:
         password = _from_environment(args.password_env, environ)
     elif args.password_stdin:
-        password = stdin.readline().rstrip("\r\n")
+        line = stdin.readline()
+        # An empty line is an empty password, but no line at all means the
+        # input ended; sending "" would turn that into a misleading reject.
+        if not line:
+            raise EOFError(
+                "input ended before the password was read from standard input."
+            )
+        password = line.rstrip("\r\n")
     else:
-        password = prompt(f"Password for {args.username}: ")
+        password = _ask(
+            prompt,
+            f"Password for {args.username}: ",
+            "password",
+            "--password-env or --password-stdin",
+        )
 
     if args.secret is not None:
         secret = args.secret
@@ -933,7 +970,12 @@ def _read_inputs(
             raise ValueError(f"{args.secret_file} does not start with a secret.")
         secret = lines[0]
     else:
-        secret = prompt(f"Shared secret for {args.server}: ")
+        secret = _ask(
+            prompt,
+            f"Shared secret for {args.server}: ",
+            "shared secret",
+            "--secret-file or --secret-env",
+        )
     return password, secret
 
 

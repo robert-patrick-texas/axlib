@@ -97,7 +97,7 @@ sudo ./install.sh [options]
 | `--with-textfsm` / `--no-textfsm` | off | Install or remove show-command parsing (`axlib parse`: TextFSM and the ntc-templates collection, about 5 MB), and create `/etc/axlib/textfsm` for shared templates. `--no-textfsm` keeps the templates. |
 | `--with-markdown` / `--no-markdown` | off | Install or remove Markdown-to-HTML conversion (`axlib md2html`: markdown-it-py and two small companions, under 1 MB). See [MARKDOWN.md](MARKDOWN.md). |
 | `--with-netenv` / `--no-netenv` | off | Install or remove the login snippet that exports `NETUSER`/`NETPASS`/`NETENABLE` in every interactive login. `/etc/profile.d` is read by login shells, such as an SSH session. Read [NETENV.md](NETENV.md) first. |
-| `--no-store` / `--store` | store on | Skip, or go back to, creating and verifying the SQLite store and key. Skip it when using the encrypted text store instead, and set `enabled = false` under `[sqlite]` in `axlib.toml`, which the installer writes either way. |
+| `--no-store` / `--store` | store on | Skip, or go back to, creating and verifying the SQLite store and key. Skip it when using the encrypted text store instead. With `--no-store`, a new `axlib.toml` has `enabled = false` under `[sqlite]`. An existing `axlib.toml` is never changed, so edit its `enabled` line yourself. To add the store later, set `enabled = true` and run the installer with `--store`. |
 
 The defaults in this table apply to the first install. Every later run starts
 from the options of the run before it (see [Recorded options](#recorded-options)),
@@ -105,10 +105,11 @@ so options are only needed to change something.
 
 Directories must be absolute paths without a single quote (`'`), because the
 record stores them in single quotes and other programs read them from any
-directory. While it runs, the installer ignores `AXLIB_SQLITE_KEY`,
-`AXLIB_SQLITE_KEY_FILE`, `AXLIB_SQLITE_DATABASE`, and `AXLIB_SQLITE_ENABLE`
-in root's environment and sets `AXLIB_CONFIG_FILE` to the `axlib.toml` in
-`--config-dir`, so root's own settings cannot redirect the store it creates.
+directory. While it runs, the installer ignores every `AXLIB_*` variable in
+root's environment, such as one kept by `sudo -E` or `sudo -i`, and sets
+`AXLIB_CONFIG_FILE` to the `axlib.toml` in `--config-dir`. Root's own
+settings therefore cannot redirect or reshape the store it creates: its key,
+paths, and group, and whether Redis is used, all come from `axlib.toml`.
 The environment variable `UV` names the uv binary to use; without it, the
 installer uses the uv of the previous run, then `uv` on `PATH`.
 
@@ -167,17 +168,25 @@ form, keeps that part installed or not installed, as it finds it.
    `UV_PYTHON_INSTALL_DIR` and `UV_MANAGED_PYTHON=1` so uv cannot pick an
    interpreter under someone's home directory, which other users could not
    read.
-4. Copies the release to `/opt/shared/axlib/releases/axlib-<version>/`, points
-   `current` at it, builds its wheel, and adds the wheel to the
-   `/opt/shared/axlib` uv project with `uv add`. `uv.lock` records the exact
-   versions installed. A part turned off with `--no-tui`, `--no-textfsm`, or
-   `--no-markdown` is removed from the project, and `uv sync` uninstalls the
-   packages that nothing else needs.
-5. Links `/usr/local/bin/axlib` and copies `axuv` to `/usr/local/sbin`.
+4. Copies the release to `/opt/shared/axlib/releases/axlib-<version>/`,
+   builds its wheel, and adds the wheel to the `/opt/shared/axlib` uv project
+   with `uv add`. `uv.lock` records the exact versions installed. A part
+   turned off with `--no-tui`, `--no-textfsm`, or `--no-markdown` is removed
+   from the project, and `uv sync` uninstalls the packages that nothing else
+   needs.
+5. Links `/usr/local/bin/axlib` and checks that `axlib version` runs. Only
+   then does it point `current` at the new release, so if the build,
+   `uv add`, or the check fails, the installer stops with an error and
+   `current` still names the release installed before. A failure before
+   `uv add` has finished also restores the project's `pyproject.toml` and
+   `uv.lock` (changed when a part is turned off) and removes the copy and
+   wheel of a release that was never installed. Then it copies `axuv` to
+   `/usr/local/sbin`.
 6. Creates `/etc/axlib` and `/var/lib/axlib`, or resets the owner, group,
    and mode of existing ones, and with `--with-textfsm` creates
    `/etc/axlib/textfsm` if it is missing. It writes `axlib.toml` **only if it
-   does not already exist**.
+   does not already exist**, with the SQLite store enabled, or disabled with
+   `--no-store`.
 7. Records its options in `/etc/axlib/install.env`, and sets
    `AXLIB_CONFIG_FILE` for all logins.
 8. Unless `--no-store` is given, runs `axlib credential-db init --generate-key`
@@ -185,7 +194,10 @@ form, keeps that part installed or not installed, as it finds it.
    store it runs `axlib credential-db init`, which verifies the key and
    database and changes no records. **An existing key is never replaced.**
 9. Installs the netenv login snippet with `--with-netenv`, or removes it
-   without, then prints a store health check (not with `--no-store`).
+   without, then prints a store health check (not with `--no-store`). If a
+   store enabled in `axlib.toml` is not ready, it prints a warning that says
+   so and how to run the check again, then the summary. axlib is installed
+   at that point, so the exit status is still 0.
 
 The generated configuration is minimal. Everything not listed uses axlib's
 defaults (`0660`/`0640` modes, 5-second lock timeout, Redis off):
@@ -205,6 +217,11 @@ group = "netops"
 # platform = "cisco_ios"              # used when --platform is not given
 # template_dirs = ["textfsm"]         # default: the textfsm directory beside this file
 ```
+
+With `--no-store`, the file says `enabled = false` instead, so lookups skip
+the store that was not created. The other `[sqlite]` lines stay, so turning
+the store on later means setting `enabled = true` and running the installer
+with `--store`.
 
 Edit it to add a shared fallback account, Redis caching, or the encrypted text
 store. [CREDENTIALS.md](CREDENTIALS.md#settings-reference) describes every
@@ -375,7 +392,9 @@ The configuration, key, database, records, and the libraries you added are
 untouched. Only axlib itself, the `current` symlink, `axuv`, the recorded
 options, the netenv snippet (if installed), and any part you turn on or off
 change. Running the same release's installer again is also safe: it rebuilds
-and reinstalls that release.
+and reinstalls that release. If the new release fails to build or install,
+the installer stops with an error, and `current` still points at the release
+installed before.
 
 Operators with their own projects keep using the wheel they pinned until they
 update it (see [When axlib is upgraded](#when-axlib-is-upgraded)). Tell them
@@ -697,6 +716,8 @@ your project.
 | `axuv: error: uv was not found; pass its location: sudo UV=/path/to/uv axuv ...` | The uv recorded by the installer is gone and `uv` is not on root's `PATH`. Reinstall uv into `/usr/local/bin`, or pass `UV=`. `axuv` uses `UV` from the environment first, then the recorded uv, then `PATH`. |
 | `axuv: error: /etc/axlib/install.env not found` | axlib was installed by an older installer that wrote no record, or the record was deleted. Run the installer again with the options you used. |
 | Health check shows `file ... not-configured` and `file: No encrypted credential file is configured` | Expected. Only the SQLite store (`db`) is enabled by default. |
+| `install.sh: warning: the store health check failed` | axlib is installed, but a store enabled in `axlib.toml` is not ready. The table above the warning shows which one. A text store (`[credential_file]`) enabled before it was created needs `axlib credential-file init --generate-key`. With no store enabled at all, such as `enabled = false` under `[sqlite]` from an earlier `--no-store` install, enable one. Then run `/opt/shared/axlib/.venv/bin/python -m axlib.credentials.admin` again. |
+| Every lookup prints `SQLite credential database does not exist` on a host installed with `--no-store` | `axlib.toml` has `enabled = true` under `[sqlite]`. Older installers wrote that even with `--no-store`, and the installer never changes an existing `axlib.toml`. Set `enabled = false`, or create the store with `sudo ./install.sh --store`. |
 | `ModuleNotFoundError: No module named 'netmiko'` (or another library) | The library is not in the environment the script runs in. For the shared environment, ask an administrator to `axuv add` it. For your own project, run `uv add` in the project. |
 | A library works for root, but other users get `cannot import name ... (unknown location)`, `PermissionError`, or `ModuleNotFoundError` | It was installed by plain `uv` under a restrictive umask. Python treats the unreadable directory as an empty namespace package, which produces these errors. The same restrictive modes are also in root's uv cache, so clear the cache before reinstalling: `axuv cache clean <name> <its-dependencies>` then `axuv sync --reinstall-package <name>`. To reset everything, run `axuv cache clean && axuv sync --reinstall` (this downloads all packages again). |
 | A cron job gets the shared account or no credentials | cron did not set `USER`. Use `ax.getkeys(getpass.getuser())` (see [Scheduled jobs](#scheduled-jobs-cron-and-systemd)). |

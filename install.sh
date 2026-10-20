@@ -107,6 +107,7 @@ EOF
 }
 
 say() { printf '==> %s\n' "$*"; }
+warn() { printf 'install.sh: warning: %s\n' "$*" >&2; }
 die() { printf 'install.sh: error: %s\n' "$*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
@@ -205,8 +206,13 @@ fi
 # uv may pick an interpreter under someone's home directory, which other users
 # cannot read, and every axlib command would fail for them.
 export UV_PYTHON_INSTALL_DIR=$PYTHON_DIR UV_MANAGED_PYTHON=1
-# A key or config in root's own environment would redirect the store setup.
-unset AXLIB_SQLITE_KEY AXLIB_SQLITE_KEY_FILE AXLIB_SQLITE_DATABASE AXLIB_SQLITE_ENABLE
+# Any AXLIB_* setting in root's own environment (kept by sudo -E or sudo -i)
+# overrides axlib.toml, so it could redirect or reshape the store this run
+# sets up: a key, a path, a group, or a Redis cache.  Only axlib.toml counts.
+# Variable names contain no spaces, so the unquoted list splits safely.
+for name in $(compgen -e AXLIB_); do
+    unset "$name"
+done
 export AXLIB_CONFIG_FILE=$CONFIG_DIR/axlib.toml
 
 say "Installing axlib $VERSION from $SOURCE_DIR"
@@ -228,11 +234,30 @@ RELEASES=$PREFIX/releases
 RELEASE_DIR=$RELEASES/axlib-$VERSION
 install -d -m 0755 "$PREFIX" "$RELEASES"
 
+# Until the environment runs this release, a failure puts things back: the
+# project files saved before `uv remove` below are restored, and the copy and
+# wheel of a release that was never installed are removed, so releases/ lists
+# only releases that ran.  The trap is cleared once uv add and uv sync succeed.
+PROJECT_BACKUP=
+NEW_RELEASE=0
+[ -e "$RELEASE_DIR" ] || NEW_RELEASE=1
+undo_failed_install() {
+    if [ -n "$PROJECT_BACKUP" ]; then
+        warn "restoring $PREFIX/pyproject.toml and uv.lock"
+        cp -p "$PROJECT_BACKUP"/* "$PREFIX/"
+        rm -rf "$PROJECT_BACKUP"
+    fi
+    if [ "$NEW_RELEASE" -eq 1 ]; then
+        rm -rf "$RELEASE_DIR"
+        rm -f "$RELEASES"/axlib-"$VERSION"-*.whl
+    fi
+}
+trap undo_failed_install EXIT
+
 say "Copying release files to $RELEASE_DIR"
 rm -rf "$RELEASE_DIR"
 cp -R "$SOURCE_DIR" "$RELEASE_DIR"
 rm -rf "$RELEASE_DIR/.venv"
-ln -sfn "releases/axlib-$VERSION" "$PREFIX/current"
 
 say "Building the axlib wheel"
 rm -f "$RELEASES"/axlib-"$VERSION"-*.whl
@@ -272,6 +297,9 @@ if [ "${#UNWANTED[@]}" -gt 0 ]; then
     # uv add keeps the extras of an existing requirement, so drop it first.
     # --no-sync leaves .venv alone until the commands below update it.
     for part in "${UNWANTED[@]}"; do say "Removing $part"; done
+    PROJECT_BACKUP=$(mktemp -d)
+    cp -p "$PREFIX/pyproject.toml" "$PROJECT_BACKUP/"
+    [ ! -f "$PREFIX/uv.lock" ] || cp -p "$PREFIX/uv.lock" "$PROJECT_BACKUP/"
     (cd "$PREFIX" && "$UV" remove --quiet --no-sync axlib)
 fi
 say "Installing $REQUIREMENT ${EXTRAS[*]-} into $PREFIX/.venv"
@@ -285,10 +313,17 @@ say "Installing $REQUIREMENT ${EXTRAS[*]-} into $PREFIX/.venv"
 if [ "${#UNWANTED[@]}" -gt 0 ]; then
     (cd "$PREFIX" && "$UV" sync --quiet)
 fi
+trap - EXIT
+[ -z "$PROJECT_BACKUP" ] || rm -rf "$PROJECT_BACKUP"
 
 install -d -m 0755 "$BIN_DIR"
 ln -sfn "$PREFIX/.venv/bin/axlib" "$BIN_DIR/axlib"
 "$BIN_DIR/axlib" version >/dev/null || die "$BIN_DIR/axlib does not run."
+
+# Moved only now that the environment runs this release: if the build or
+# uv add above fails, current still names the release the environment runs.
+say "Pointing $PREFIX/current at axlib-$VERSION"
+ln -sfn "releases/axlib-$VERSION" "$PREFIX/current"
 
 # A copy, not a symlink into releases/: axuv must keep working while an
 # administrator rolls axlib back or removes old releases.
@@ -313,7 +348,12 @@ fi
 if [ -e "$AXLIB_CONFIG_FILE" ]; then
     say "Keeping existing $AXLIB_CONFIG_FILE"
 else
-    say "Writing $AXLIB_CONFIG_FILE"
+    # With --no-store there is no key or database, so the store starts off;
+    # enabled, every lookup would warn that the database does not exist.  The
+    # other [sqlite] lines stay, so turning it on later takes only a run with
+    # --store and "enabled = true" here.
+    if [ "$CREATE_STORE" -eq 1 ]; then SQLITE_ENABLED=true; else SQLITE_ENABLED=false; fi
+    say "Writing $AXLIB_CONFIG_FILE (SQLite store enabled = $SQLITE_ENABLED)"
     cat >"$AXLIB_CONFIG_FILE" <<EOF
 # Written by axlib install.sh.  Every option is described in docs/CREDENTIALS.md
 # ($PREFIX/current/docs/CREDENTIALS.md).  This file holds no secrets.
@@ -322,7 +362,7 @@ else
 # shared_service = "network-shared"   # fallback account for ax.getkeys()
 
 [sqlite]
-enabled = true
+enabled = $SQLITE_ENABLED
 database = "$DATA_DIR/credentials.db"
 key_file = "$CONFIG_DIR/sqlite-aes256.key"
 group = "$GROUP"
@@ -408,9 +448,18 @@ elif [ -e /etc/profile.d/axlib-netenv.sh ]; then
 fi
 
 # ------------------------------------------------------------------- report
+# Everything is installed by now, so a store that is not ready (such as a
+# text store enabled in axlib.toml but not yet initialized) is reported, not
+# turned into a failed install that also skips the summary below.
 if [ "$CREATE_STORE" -eq 1 ]; then
     say "Store health check"
-    "$PREFIX/.venv/bin/python" -m axlib.credentials.admin
+    if ! "$PREFIX/.venv/bin/python" -m axlib.credentials.admin; then
+        warn "the store health check failed.
+  A store enabled in $AXLIB_CONFIG_FILE is not ready, or the file has an
+  error; the lines above say which.  axlib itself is installed.  Fix the
+  store, then check again with:
+    $PREFIX/.venv/bin/python -m axlib.credentials.admin"
+    fi
 fi
 
 cat <<EOF

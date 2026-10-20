@@ -43,12 +43,15 @@ The same command is available as `axlib-radius` and `python -m axlib.radius`.
 | `--json` | Print one JSON object instead of text. |
 
 The password comes from one of these options; giving two of them is an error.
-When none is given, you are prompted with echo turned off:
+When none is given, you are prompted with echo turned off. Under cron or CI
+there is usually nothing to answer the prompt, and the check stops with exit
+status 2 and `input ended at the password prompt`. Scripts should use an
+option:
 
 | Password option | Use |
 | --- | --- |
 | `--password-env VAR` | Read from an environment variable, for example `--password-env NETPASS` after `netenv-set` (see `docs/NETENV.md`). |
-| `--password-stdin` | Read the first line of standard input: `printf '%s\n' "$pw" \| axlib radius ...`. |
+| `--password-stdin` | Read the first line of standard input: `printf '%s\n' "$pw" \| axlib radius ...`. An empty line is an empty password. Empty input, with no line at all, is an error (exit status 2). |
 | `--password TEXT` | On the command line. Avoid it on shared hosts. |
 
 The shared secret works the same way:
@@ -68,7 +71,7 @@ through `ps` and is kept in shell history. Use these options only in a lab.
 | --- | --- |
 | 0 | `Access-Accept`: the server accepted the username and password. |
 | 1 | `Access-Reject` or `Access-Challenge`: the server answered, but did not accept the login. |
-| 2 | Error: bad option, unreadable secret file, name lookup failure, port closed, or a reply that failed verification. |
+| 2 | Error: bad option, unreadable secret file, input that ended before the password or secret was read, name lookup failure, port closed, or a reply that failed verification. |
 | 3 | No reply after every retry. |
 
 Results go to standard output and errors to standard error. Scripts can use
@@ -215,6 +218,8 @@ own:
 | `Access-Reject` (exit 1) | The server rejected the login: a wrong password, a locked account, or a policy that does not match. `Reply-Message` and the server's logs usually explain which. |
 | `Access-Challenge` (exit 1) | The server wants a second factor, such as an OTP. This client does not answer challenges. |
 | `cannot resolve` (exit 2) | DNS cannot resolve the server name. Use the IP address or fix the name. |
+| `input ended at the password prompt` or `at the shared secret prompt` (exit 2) | Nothing could be typed at the prompt: the command ran from cron, CI, or a pipe with no terminal, or someone pressed Ctrl-D. In scripts, give the password with `--password-env` or `--password-stdin` and the secret with `--secret-file` or `--secret-env`. |
+| `input ended before the password was read from standard input` (exit 2) | `--password-stdin` found no line on standard input, for example because the command that should print the password printed nothing. |
 
 The client sends its NAS address as the local address the operating system
 picks for the route to the server. Behind NAT, the server sees the translated

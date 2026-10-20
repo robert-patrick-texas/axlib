@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -20,6 +23,26 @@ from axlib.credentials.settings import (
     parse_boolean,
     parse_file_mode,
 )
+
+# Permission bits do not stop root, so tests of unreadable files skip there.
+NOT_ROOT = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root can read files regardless of their mode"
+)
+
+
+@contextmanager
+def locked_directory(directory: Path) -> Iterator[Path]:
+    """Make ``directory`` impossible to enter, then restore it afterwards.
+
+    Mode ``0600`` keeps read permission but removes search (execute), so no
+    file inside can be opened or even ``stat()``-ed.  That is what a user
+    outside the group sees in ``/etc/axlib`` (mode ``2750``).
+    """
+    directory.chmod(0o600)
+    try:
+        yield directory
+    finally:
+        directory.chmod(0o700)
 
 
 def test_toml_and_environment_precedence(tmp_path: Path) -> None:
@@ -104,8 +127,66 @@ def test_invalid_boolean_fails_closed() -> None:
 
 
 def test_selected_missing_toml_is_an_error(tmp_path: Path) -> None:
-    with pytest.raises(CredentialConfigurationError):
-        load_settings(tmp_path / "missing.toml", environ={})
+    missing = tmp_path / "missing.toml"
+    with pytest.raises(CredentialConfigurationError) as caught:
+        load_settings(missing, environ={})
+    assert str(caught.value) == (
+        f"Credential configuration file does not exist: {missing}"
+    )
+
+
+@NOT_ROOT
+def test_config_file_in_a_directory_that_cannot_be_entered_is_unreadable(
+    tmp_path: Path,
+) -> None:
+    # Path.exists() returns False when stat() is refused, so this file used
+    # to be reported as missing although it is there.
+    config = tmp_path / "etc-axlib" / "axlib.toml"
+    config.parent.mkdir()
+    config.write_text("[credentials]\n", encoding="utf-8")
+
+    with (
+        locked_directory(config.parent),
+        pytest.raises(CredentialConfigurationError) as caught,
+    ):
+        load_settings(config, environ={})
+
+    assert str(caught.value) == (
+        f"Credential configuration file cannot be read: {config} (Permission denied)"
+    )
+
+
+@NOT_ROOT
+def test_config_file_without_read_permission_is_unreadable(tmp_path: Path) -> None:
+    config = tmp_path / "axlib.toml"
+    config.write_text("[credentials]\n", encoding="utf-8")
+    config.chmod(0)
+
+    with pytest.raises(CredentialConfigurationError) as caught:
+        load_settings(config, environ={})
+
+    assert str(caught.value) == (
+        f"Credential configuration file cannot be read: {config} (Permission denied)"
+    )
+
+
+def test_config_file_that_is_a_directory_is_unreadable(tmp_path: Path) -> None:
+    with pytest.raises(CredentialConfigurationError) as caught:
+        load_settings(tmp_path, environ={})
+
+    assert str(caught.value) == (
+        f"Credential configuration file cannot be read: {tmp_path} (Is a directory)"
+    )
+
+
+def test_config_file_that_is_not_utf8_is_a_configuration_error(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "axlib.toml"
+    config.write_bytes(b"[credentials]\nshared_service = '\xff'\n")
+
+    with pytest.raises(CredentialConfigurationError, match="Unable to read"):
+        load_settings(config, environ={})
 
 
 def test_invalid_legacy_config_value_uses_credential_error(
@@ -184,6 +265,24 @@ key_file = "sqlite-aes256.key"
     assert settings.sqlite_group == "netops"
 
 
+def test_relative_paths_keep_a_symlinked_file_visible(tmp_path: Path) -> None:
+    # The stores refuse a symlinked key file or database; that check only
+    # works if settings hand them the link, not the file it points to.
+    (tmp_path / "real.key").write_text("key", encoding="utf-8")
+    (tmp_path / "link.key").symlink_to(tmp_path / "real.key")
+    config_file = tmp_path / "axlib.toml"
+    config_file.write_text(
+        '[sqlite]\nenabled = true\ndatabase = "sub/../c.db"\nkey_file = "link.key"\n',
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_file, environ={})
+
+    assert settings.sqlite_key_file == tmp_path.resolve() / "link.key"
+    assert settings.sqlite_key_file.is_symlink()
+    assert settings.sqlite_database == tmp_path.resolve() / "c.db"
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [("0660", 0o660), ("0o600", 0o600), (0o640, 0o640)],
@@ -243,6 +342,21 @@ def test_installed_config_file_without_a_value_is_none(
 def test_missing_or_unreadable_record_is_none(tmp_path: Path) -> None:
     assert installed_config_file(tmp_path / "missing.env") is None
     assert installed_config_file(tmp_path) is None  # a directory cannot be read
+
+
+@NOT_ROOT
+def test_record_in_a_directory_that_cannot_be_entered_is_treated_as_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A user outside the install group cannot read /etc/axlib/install.env;
+    # axlib then runs on AXLIB_* variables and defaults, without an error.
+    record = _write_record(tmp_path, "CONFIG_FILE='/etc/axlib/axlib.toml'\n")
+    monkeypatch.setattr(settings_module, "INSTALL_RECORD", record)
+
+    with locked_directory(tmp_path):
+        assert installed_config_file(record) is None
+        assert default_config_file({}) is None
+        assert load_settings(environ={}).sqlite_enabled is False
 
 
 def test_malformed_record_is_a_configuration_error(tmp_path: Path) -> None:

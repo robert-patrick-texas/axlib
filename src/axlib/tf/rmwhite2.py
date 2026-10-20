@@ -29,10 +29,13 @@ from ._cli import add_text_io_arguments, read_text, render_cli_error, write_text
 
 QUOTE_PAIRS = (('"', '"'), ("\u2018", "\u2019"))
 STRAIGHT_SINGLE = "'"
+# LF and CRLF lines end at "\n", but classic Mac (CR-only) lines end at "\r",
+# so a quoted region must stop at either character to stay on one line.
+LINE_BREAKS = frozenset("\r\n")
 
 
 def _find_close_on_line(text: str, start: int, close_quote: str) -> int:
-    """Find an unescaped closing quote before the next newline.
+    """Find an unescaped closing quote before the next line break.
 
     Args:
         text (str): Complete input text.
@@ -40,7 +43,7 @@ def _find_close_on_line(text: str, start: int, close_quote: str) -> int:
         close_quote (str): Expected one-character closing delimiter.
 
     Returns:
-        int: Index of the close quote, or ``-1`` when none occurs on the line.
+        int: Index of the close quote, or ``-1`` when the line ends first.
 
     Raises:
         None: Bounds checks keep all character access safe.
@@ -48,9 +51,13 @@ def _find_close_on_line(text: str, start: int, close_quote: str) -> int:
     index = start
     while index < len(text):
         char = text[index]
-        if char == "\n":
+        if char in LINE_BREAKS:
             return -1
-        if char == "\\" and index + 1 < len(text) and text[index + 1] != "\n":
+        if (
+            char == "\\"
+            and index + 1 < len(text)
+            and text[index + 1] not in LINE_BREAKS
+        ):
             index += 2
             continue
         if char == close_quote:
@@ -67,7 +74,7 @@ def _is_straight_single_opener(text: str, position: int) -> bool:
         position (int): Index of the candidate single quote.
 
     Returns:
-        bool: ``True`` at line/string start or after whitespace or ``=``.
+        bool: ``True`` at line/string start or after a space, tab, or ``=``.
 
     Raises:
         IndexError: If ``position`` is outside ``text``; internal callers pass a
@@ -77,7 +84,7 @@ def _is_straight_single_opener(text: str, position: int) -> bool:
         return False
     if position == 0:
         return True
-    return text[position - 1] in {" ", "\t", "\n", "="}
+    return text[position - 1] in {" ", "\t", "\r", "\n", "="}
 
 
 def _match_balanced_opener(text: str, position: int) -> tuple[str, str, int] | None:

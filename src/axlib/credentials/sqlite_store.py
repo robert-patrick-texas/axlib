@@ -87,7 +87,9 @@ class SQLiteCredentialRecord:
     """Safe metadata describing one encrypted SQLite service record.
 
     Attributes:
-        service: Normalized lookup name used by ``axlib.getkeys()``.
+        service: Service name exactly as stored.  The store never changes a
+            name; ``StoreAdmin``, the CLIs, and the TUI normalize it before
+            writing so that ``axlib.getkeys()`` finds it.
         fields: Sorted encrypted field names; secret values are never included.
         created_at: UTC timestamp recorded when the service was added.
         updated_at: UTC timestamp recorded after the latest update.
@@ -320,14 +322,13 @@ def _protect_regular_file(
             f"Unable to inspect {label} {path}: {exc}"
         ) from exc
 
+    # Only the first letter is raised: str.capitalize() would also lower the
+    # rest and turn "SQLite encryption key file" into "Sqlite encryption ...".
+    role = label[:1].upper() + label[1:]
     if stat.S_ISLNK(current.st_mode):
-        raise CredentialBackendError(
-            f"{label.capitalize()} must not be a symlink: {path}"
-        )
+        raise CredentialBackendError(f"{role} must not be a symlink: {path}")
     if not stat.S_ISREG(current.st_mode):
-        raise CredentialBackendError(
-            f"{label.capitalize()} is not a regular file: {path}"
-        )
+        raise CredentialBackendError(f"{role} is not a regular file: {path}")
     if not enforce:
         return
 
@@ -405,15 +406,15 @@ def _prepare_parent_directory(
             )
         return
 
+    # Resolve the names before mkdir(): a misspelled owner or group must fail
+    # without leaving a new, wrongly owned directory behind.
+    uid = _resolve_owner_id(owner)
+    gid = _resolve_group_id(group)
     try:
         parent.mkdir(parents=True, exist_ok=True, mode=mode)
-        uid = _resolve_owner_id(owner)
-        gid = _resolve_group_id(group)
         if uid is not None or gid is not None:
             os.chown(parent, -1 if uid is None else uid, -1 if gid is None else gid)
         parent.chmod(mode)
-    except (CredentialConfigurationError, CredentialBackendError):
-        raise
     except OSError as exc:
         raise CredentialBackendError(
             f"Unable to create credential directory {parent}: {exc}"
@@ -826,6 +827,8 @@ class SQLiteCredentialStore:
         Raises:
             CredentialConfigurationError: If the key is absent or invalid.
             CredentialDependencyError: If ``cryptography`` is unavailable.
+            CredentialBackendError: If the key file is unsafe (a symlink or
+                not a regular file) or its protection cannot be enforced.
         """
         aesgcm_class, _ = _load_aesgcm()
         return aesgcm_class(self._resolve_key())
@@ -915,9 +918,13 @@ class SQLiteCredentialStore:
             CredentialConfigurationError: If values cannot be validated or the
                 configured key is invalid.
             CredentialDependencyError: If ``cryptography`` is unavailable.
-            CredentialBackendError: If JSON serialization or encryption fails.
+            CredentialBackendError: If the key file is unsafe, or JSON
+                serialization or encryption fails.
         """
         prepared = self._validate_values(values)
+        # Built outside the try block so a key problem, such as a symlinked key
+        # file, is reported as itself rather than as an encryption failure.
+        aesgcm = self._aesgcm()
         try:
             plaintext = json.dumps(
                 prepared,
@@ -928,14 +935,12 @@ class SQLiteCredentialStore:
             # A new random 96-bit nonce is mandatory for every AES-GCM write.
             # Reusing a nonce with the same key would compromise confidentiality.
             nonce = secrets.token_bytes(NONCE_LENGTH)
-            ciphertext = self._aesgcm().encrypt(
+            ciphertext = aesgcm.encrypt(
                 nonce,
                 plaintext,
                 self._record_aad(service),
             )
             return nonce, ciphertext
-        except (CredentialConfigurationError, CredentialDependencyError):
-            raise
         except Exception as exc:
             raise CredentialBackendError(
                 f"Unable to encrypt SQLite credentials for service {service!r}: {exc}"
@@ -958,14 +963,18 @@ class SQLiteCredentialStore:
             dict[str, str]: Decrypted credential fields.
 
         Raises:
-            CredentialBackendError: If integrity validation fails or plaintext
-                does not contain a string-to-string JSON object.
+            CredentialBackendError: If the key file is unsafe, integrity
+                validation fails, or plaintext does not contain a
+                string-to-string JSON object.
             CredentialConfigurationError: If the configured key is invalid.
             CredentialDependencyError: If ``cryptography`` is unavailable.
         """
         _, invalid_tag_class = _load_aesgcm()
+        # Built outside the try block so a key problem is reported as itself;
+        # see _encrypt_values().
+        aesgcm = self._aesgcm()
         try:
-            plaintext = self._aesgcm().decrypt(
+            plaintext = aesgcm.decrypt(
                 bytes(nonce),
                 bytes(ciphertext),
                 self._record_aad(service),
@@ -976,8 +985,6 @@ class SQLiteCredentialStore:
                 f"SQLite credential authentication failed for service {service!r}; "
                 "the key is wrong or the record was modified."
             ) from exc
-        except (CredentialConfigurationError, CredentialDependencyError):
-            raise
         except (UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
             raise CredentialBackendError(
                 f"SQLite credential payload for service {service!r} is invalid."
@@ -1008,13 +1015,20 @@ class SQLiteCredentialStore:
             None: Successful authentication proves the configured key matches.
 
         Raises:
-            CredentialBackendError: If the key is wrong or metadata was changed.
+            CredentialBackendError: If the key is wrong, metadata was changed,
+                or the key file is unsafe or cannot be protected.
             CredentialConfigurationError: If the configured key is malformed.
             CredentialDependencyError: If ``cryptography`` is unavailable.
         """
         _, invalid_tag_class = _load_aesgcm()
+        # The key is resolved before the try block.  The broad handler below is
+        # meant for malformed metadata (for example a nonce of the wrong
+        # length); inside it, a symlinked key file or one whose protection
+        # cannot be enforced would be reported as "key-check metadata is
+        # invalid", hiding the real cause.
+        aesgcm = self._aesgcm()
         try:
-            plaintext = self._aesgcm().decrypt(
+            plaintext = aesgcm.decrypt(
                 bytes(nonce),
                 bytes(ciphertext),
                 KEY_CHECK_AAD,
@@ -1024,8 +1038,6 @@ class SQLiteCredentialStore:
                 "SQLite credential database key validation failed; the configured "
                 "key does not match this database or metadata was modified."
             ) from exc
-        except (CredentialConfigurationError, CredentialDependencyError):
-            raise
         except Exception as exc:
             raise CredentialBackendError(
                 "SQLite credential database key-check metadata is invalid."
@@ -1610,6 +1622,46 @@ class SQLiteCredentialStore:
             )
         return records
 
+    def check_key_rotation(self) -> tuple[Path, Path]:
+        """Refuse a key rotation that cannot be completed safely.
+
+        :meth:`rotate_key` runs these checks before it changes anything, and
+        ``axlib credential-db rotate-key --dry-run`` runs them on their own,
+        so a dry run refuses exactly what a real rotation would.
+
+        Args:
+            None: The key settings come from this provider's settings.
+
+        Returns:
+            tuple[pathlib.Path, pathlib.Path]: The configured key file, and the
+                ``<key_file>.rotating`` staging file a rotation writes first.
+
+        Raises:
+            CredentialConfigurationError: If the key is set through
+                ``AXLIB_SQLITE_KEY``, no key file is configured, or a previous
+                rotation left its staging file behind.
+        """
+        if self.settings.sqlite_key is not None:
+            raise CredentialConfigurationError(
+                "SQLite key rotation requires a configured key file; "
+                "AXLIB_SQLITE_KEY cannot be rotated in place because axlib "
+                "cannot update the calling shell's environment."
+            )
+        if self.settings.sqlite_key_file is None:
+            raise CredentialConfigurationError(
+                "SQLite key rotation requires sqlite.key_file or AXLIB_SQLITE_KEY_FILE."
+            )
+        key_file = self.settings.sqlite_key_file.expanduser()
+        staged_key_path = key_file.with_name(key_file.name + ".rotating")
+        if staged_key_path.exists():
+            raise CredentialConfigurationError(
+                "A previous SQLite key rotation may not have completed: found "
+                f"leftover staging file {staged_key_path}. Verify it, then "
+                "either move it into place as the key file or remove it "
+                "before retrying."
+            )
+        return key_file, staged_key_path
+
     def rotate_key(self, new_key: bytes) -> int:
         """Re-encrypt every record and the key-check marker under a new key.
 
@@ -1648,25 +1700,7 @@ class SQLiteCredentialStore:
                 f"New SQLite encryption key must be exactly {KEY_LENGTH} bytes "
                 f"for AES-256-GCM; received {len(new_key)} bytes."
             )
-        if self.settings.sqlite_key is not None:
-            raise CredentialConfigurationError(
-                "SQLite key rotation requires a configured key file; "
-                "AXLIB_SQLITE_KEY cannot be rotated in place because axlib "
-                "cannot update the calling shell's environment."
-            )
-        if self.settings.sqlite_key_file is None:
-            raise CredentialConfigurationError(
-                "SQLite key rotation requires sqlite.key_file or AXLIB_SQLITE_KEY_FILE."
-            )
-        key_file = self.settings.sqlite_key_file.expanduser()
-        staged_key_path = key_file.with_name(key_file.name + ".rotating")
-        if staged_key_path.exists():
-            raise CredentialConfigurationError(
-                "A previous SQLite key rotation may not have completed: found "
-                f"leftover staging file {staged_key_path}. Verify it, then "
-                "either move it into place as the key file or remove it "
-                "before retrying."
-            )
+        key_file, staged_key_path = self.check_key_rotation()
 
         aesgcm_class, _ = _load_aesgcm()
         new_aesgcm = aesgcm_class(new_key)

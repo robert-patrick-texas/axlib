@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import base64
+import dataclasses
 import os
 from pathlib import Path
 
@@ -222,4 +223,60 @@ def test_file_store_rotate_key_blocks_when_staging_file_remains(
     staged = key_file.with_name(key_file.name + ".rotating")
     staged.write_text("leftover-from-an-interrupted-rotation\n", encoding="ascii")
     with pytest.raises(CredentialConfigurationError, match="staging file"):
+        store.rotate_key(os.urandom(32))
+
+
+@pytest.mark.parametrize(
+    ("identity", "message"),
+    [
+        ({"owner": "axlib-user-that-must-not-exist"}, "owner does not exist"),
+        ({"group": "axlib-group-that-must-not-exist"}, "group does not exist"),
+    ],
+)
+def test_key_generation_rejects_unknown_identity_without_leaving_a_directory(
+    tmp_path: Path, identity: dict[str, str], message: str
+) -> None:
+    key_file = tmp_path / "keys" / "credentials.key"
+
+    with pytest.raises(CredentialConfigurationError, match=message):
+        generate_credential_file_key_file(key_file, **identity)
+
+    assert not key_file.parent.exists()
+
+
+def test_initialize_rejects_unknown_group_without_creating_a_directory(
+    tmp_path: Path,
+) -> None:
+    # With the key in AXLIB_CREDENTIAL_FILE_KEY, nothing else checks the
+    # group before the credential file's parent directory would be created.
+    parent = tmp_path / "new-directory"
+    settings = dataclasses.replace(
+        _settings(tmp_path),
+        credential_file=parent / "credentials.axc",
+        credential_file_group="axlib-group-that-must-not-exist",
+    )
+
+    with pytest.raises(CredentialConfigurationError, match="group does not exist"):
+        CredentialFileStore(settings).initialize()
+
+    assert not parent.exists()
+
+
+def test_file_store_rotate_key_reports_a_record_without_a_service(
+    tmp_path: Path,
+) -> None:
+    settings = _key_file_settings(tmp_path)
+    store = CredentialFileStore(settings)
+    store.initialize()
+    store.create("ops", {"netuser": "ops", "netpass": "pw"})
+    path = settings.credential_file
+    assert path is not None
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    path.write_text(
+        "".join(line for line in lines if not line.startswith("service =")),
+        encoding="utf-8",
+    )
+
+    # rotate_key() used to fail here with a bare KeyError: 'service'.
+    with pytest.raises(CredentialBackendError, match="missing its service identity"):
         store.rotate_key(os.urandom(32))

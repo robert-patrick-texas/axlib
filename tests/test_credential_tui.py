@@ -379,8 +379,24 @@ def test_rotate_key_needs_a_key_file_and_confirmation(
         await pilot.press("k")
         assert not isinstance(app.screen, ConfirmScreen)
 
+    async def refused_with_file_key(
+        app: CredentialAdminApp, pilot: Pilot[None]
+    ) -> None:
+        monkeypatch.setattr(
+            app, "notify", lambda message, **_kwargs: messages.append(message)
+        )
+        await pilot.press("k")
+        assert not isinstance(app.screen, ConfirmScreen)
+
     run_app(CredentialAdminApp(env_settings, idle_minutes=0), refused)
-    assert any("needs a key file" in message for message in messages)
+    assert any("requires a configured key file" in message for message in messages)
+
+    # A staging file left by an interrupted rotation is refused before the
+    # confirmation, exactly as `rotate-key --dry-run` and the rotation refuse it.
+    messages.clear()
+    key_file.with_name(key_file.name + ".rotating").write_text("staged")
+    run_app(CredentialAdminApp(settings, idle_minutes=0), refused_with_file_key)
+    assert any("leftover staging file" in message for message in messages)
 
 
 def test_switching_stores_shows_which_fields_sqlite_overrides(tmp_path: Path) -> None:
@@ -436,6 +452,33 @@ def test_secret_input_refuses_to_copy_or_cut(tmp_path: Path) -> None:
         secret.action_cut()
         assert app.clipboard != SECRET
         assert secret.value == SECRET
+
+    run_app(CredentialAdminApp(settings, idle_minutes=0), scenario)
+
+
+@pytest.mark.parametrize("close", ["escape", "#cancel", "#submit"])
+def test_password_boxes_are_emptied_whenever_the_form_closes(
+    tmp_path: Path, close: str
+) -> None:
+    settings = ready_settings(tmp_path)
+
+    async def scenario(app: CredentialAdminApp, pilot: Pilot[None]) -> None:
+        await pilot.press("a")
+        form = app.screen
+        assert isinstance(form, RecordFormScreen)
+        form.query_one("#service", Input).value = "ops"
+        form.query_one("#netuser", Input).value = "ops"
+        # References are kept because the boxes leave the screen with the form.
+        boxes = list(form.query(SecretInput))
+        for box in boxes:
+            box.value = SECRET
+        if close == "escape":
+            await pilot.press("escape")
+        else:
+            await pilot.click(close)
+        await settle(pilot)
+        assert not isinstance(app.screen, RecordFormScreen)
+        assert [box.value for box in boxes] == [""] * len(boxes)
 
     run_app(CredentialAdminApp(settings, idle_minutes=0), scenario)
 

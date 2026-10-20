@@ -537,6 +537,55 @@ def test_cli_empty_secret_file(tmp_path: Path) -> None:
     assert "does not start with a secret" in err
 
 
+def _end_of_input(_text: str) -> str:
+    """Behave like getpass when input ends (Ctrl-D, or no terminal)."""
+    raise EOFError
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (
+            ["--secret", "s"],
+            (
+                "radius: input ended at the password prompt; in a script, use "
+                "--password-env or --password-stdin.\n"
+            ),
+        ),
+        (
+            ["--password", "x"],
+            (
+                "radius: input ended at the shared secret prompt; in a script, use "
+                "--secret-file or --secret-env.\n"
+            ),
+        ),
+    ],
+)
+def test_cli_prompt_at_end_of_input(extra: list[str], message: str) -> None:
+    status, out, err = _run(
+        ["127.0.0.1", "-u", "alice", *extra], environ={}, prompt=_end_of_input
+    )
+
+    assert (status, out, err) == (EXIT_ERROR, "", message)
+
+
+def test_cli_password_stdin_at_end_of_input() -> None:
+    with fake_server() as server:
+        argv = ["127.0.0.1", "-p", str(server.port), "-u", "alice"]
+        argv += ["--password-stdin", "--secret", SECRET.decode()]
+        status, out, err = _run(argv, stdin=io.StringIO(""))
+        # An empty line is an empty password, which is sent and rejected.
+        empty_status, _, _ = _run(argv, stdin=io.StringIO("\n"))
+
+    # No line at all is an error, not an empty password the server rejects.
+    assert (status, out) == (EXIT_ERROR, "")
+    assert err == (
+        "radius: input ended before the password was read from standard input.\n"
+    )
+    assert empty_status == EXIT_REJECT
+    assert len(server.requests) == 1
+
+
 def test_axlib_dispatcher_runs_radius(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as stopped:
         axlib_main(["radius", "--help"])

@@ -7,12 +7,16 @@ from __future__ import annotations
 
 import grp
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 import axlib as ax
 from axlib import config, secrets
+
+from .test_settings import NOT_ROOT, locked_directory
 
 
 def _clear_network_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -157,3 +161,55 @@ def test_package_root_getkeys_reads_sqlite_and_preserves_shared_fallback(
     monkeypatch.setattr(config, "credential_file_key_file", None)
 
     assert ax.getkeys() == ("shared-user", "shared-pass", "shared-enable")
+
+
+def _credentials_command(config_file: Path) -> subprocess.CompletedProcess[str]:
+    """Run ``axlib credentials network`` in a fresh Python process.
+
+    A new process is needed because ``axlib.config`` reads the configuration
+    file when it is first imported, and this test process did that long ago.
+    """
+    environment = {**os.environ, "AXLIB_CONFIG_FILE": str(config_file)}
+    for name in ("NETUSER", "NETPASS", "NETENABLE"):
+        environment.pop(name, None)
+    return subprocess.run(
+        [sys.executable, "-m", "axlib", "credentials", "network", "--service", "ops"],
+        capture_output=True,
+        text=True,
+        env=environment,
+        check=False,
+        timeout=120,
+    )
+
+
+def test_credentials_command_reports_a_missing_config_file_in_one_line(
+    tmp_path: Path,
+) -> None:
+    missing = tmp_path / "missing.toml"
+
+    result = _credentials_command(missing)
+
+    # Status 2 keeps "could not check" apart from 1, "fields are missing".
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == (
+        f"axlib credentials: Credential configuration file does not exist: {missing}\n"
+    )
+
+
+@NOT_ROOT
+def test_credentials_command_reports_an_unreadable_config_file(
+    tmp_path: Path,
+) -> None:
+    config_file = tmp_path / "etc-axlib" / "axlib.toml"
+    config_file.parent.mkdir()
+    config_file.write_text("[credentials]\n", encoding="utf-8")
+
+    with locked_directory(config_file.parent):
+        result = _credentials_command(config_file)
+
+    assert result.returncode == 2
+    assert result.stderr == (
+        "axlib credentials: Credential configuration file cannot be read: "
+        f"{config_file} (Permission denied)\n"
+    )

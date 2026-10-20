@@ -462,6 +462,7 @@ exported, it is plaintext in memory and goes wherever the environment goes.
 | `netenv-set prints shell code for eval and will not write it to a terminal` | You ran `axlib netenv-set` directly. Use `eval "$(axlib netenv-set)"` or the `netenv-set` shell function. |
 | `no credential store is enabled` | No configuration file was found, or it doesn't enable a store. On a host without `install.sh`, export `AXLIB_CONFIG_FILE` before sourcing the snippet. |
 | `Credential configuration file does not exist` | The path in `AXLIB_CONFIG_FILE` or `--config` is wrong. |
+| `Credential configuration file cannot be read` | The file exists, but you may not read it or enter its directory; the reason is in parentheses. On a host set up with `install.sh`, `id` must list the group that owns `/etc/axlib`. |
 | `a complete network record for 'x' was not found` | No record for that service, or it lacks `netuser`/`netpass`. Check `axlib credential-db list`, or ask an administrator. |
 | `... could not be read` (exit 2), preceded by a `lookup failed` or `Redis credential cache unavailable` line | A store can't be opened. Most often you are not in the store's group (`id` should list `netops`), the key file is wrong, or the file mode prevents reading. The line above says which. |
 | `USER='a' differs from login account 'b'` | Something changed `USER`. Unset it or use `--service`. |

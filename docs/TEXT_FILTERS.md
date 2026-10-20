@@ -53,8 +53,7 @@ commands; `--help` after a command lists its options.
 The exit status is `0` on success. A file that cannot be read or written, input
 that cannot be decoded, an unknown encoding, or a closed output pipe prints a
 one-line error to standard error and exits `1`. Invalid options and an unknown
-command print a usage message and exit `2`. `comments` and `include` also
-report input that cannot be decoded that way, with status `2`.
+command print a usage message and exit `2`.
 
 ## Python naming convention
 
@@ -81,7 +80,7 @@ Each function takes the text first and returns the transformed string:
 
 ```text
 expand_includes(text, *, directives=None, recursive=True, max_depth=20,
-                encoding="utf-8", base_dir=None)
+                encoding="utf-8", base_dir=None, source_path=None)
 strip_comments(text, *, comment_chars=(";", "!", "#"), preserve_line_endings=True)
 remove_double_slash(text)
 remove_triple_quoted(text)
@@ -107,9 +106,10 @@ default, while the `comments` command converts them to LF unless given
 Expands `$include`, `#include`, `@include`, and `@import` lines by default. A
 directive line starts, after optional indentation, with the directive word,
 followed by whitespace and a path. The whole line, including its indentation
-and line ending, is replaced by the file's content exactly as read, so the
-included file keeps its own line endings. An included file should end with a
-newline; otherwise its last line and the line after the directive run together.
+and line ending, is replaced by the file's content as read, so the included
+file keeps its own line endings. If the file's last line has no line ending,
+it gets the directive line's ending, so the line after the directive still
+starts on its own line.
 
 Directive matching is case-insensitive (`@INCLUDE` works), but the path is used
 as written, so on Linux its case must match the file name. The path may be
@@ -121,17 +121,28 @@ options replace the default directive words.
 Relative paths inside an included file are resolved from that file's directory.
 When a named input file is used, initial relative paths resolve from its parent.
 For standard input, they resolve from the current directory. `--base-dir DIR`
-overrides both. In Python, `expand_includes` resolves them from `base_dir`,
-which defaults to the current directory.
+overrides both. In Python, `expand_includes` resolves them from `base_dir`. If
+`base_dir` is not given, they resolve from the parent of `source_path`, the
+file the text came from, and without either, from the current directory.
 
 Recursive expansion is on by default. `--no-recursive`, `--max-depth`, and
 cycle detection prevent unbounded recursion. `--no-recursive` inserts each
 directly included file without expanding the directives inside it.
 `--max-depth N` (default 20) allows N levels of nested includes below the
 direct ones, so `--max-depth 0` works like `--no-recursive`; a negative value
-exits with status `2`. A missing file, blocked cycle, or nested directive beyond
-the depth limit remains visible as its original line. An include path that
-exists but cannot be read, such as a directory, stops the command with an error.
+exits with status `2`.
+
+Cycle detection blocks an include of a file that is already being expanded, so
+a file is never inserted into itself, even with `--no-recursive` or at the
+depth limit. A named input file counts as already being expanded, so an
+include that leads back to it is blocked the first time. Standard input has no
+file name: if `top.conf` is piped in and includes a file that includes
+`top.conf`, the content of `top.conf` appears once more before the cycle is
+blocked. In Python, pass `source_path` to get the named-file behavior.
+
+A missing file, blocked cycle, or nested directive beyond the depth limit
+remains visible as its original line. An include path that exists but cannot
+be read, such as a directory, stops the command with an error.
 
 Run `include` before `comments`, because `comments` removes `#include` lines.
 
@@ -168,19 +179,16 @@ has no options besides the common ones.
 ### `triple-quotes` / `rmtriple.py`
 
 Removes balanced triple-single-quoted and triple-double-quoted spans, including
-multiline spans and the quotes themselves. Text before and after a span stays,
-joined on one line when the span crossed lines, and a line left blank by a
-removal is dropped. Inside a span, a backslash escapes the next character. An
-unclosed triple quote is left unchanged, and line endings outside spans are
-preserved. It has no options besides the common ones.
+spans that cross LF, CRLF, or CR line breaks, and the quotes themselves. Text
+before and after a span stays, joined on one line when the span crossed lines,
+and a line left blank by a removal is dropped. Inside a span, a backslash
+escapes the next character. An unclosed triple quote is left unchanged, and
+line endings outside spans are preserved. It has no options besides the common
+ones.
 
 This is intentionally a text operation. It also removes valid assigned
 multiline Python strings. Use Python's `ast` or `tokenize` modules when the
 task is specifically to remove Python docstrings.
-
-Multiline spans are found only across LF line breaks. In CRLF text a multiline
-span is not removed, and the LF of each CRLF inside it becomes a space, so
-convert such text to LF first. Spans on a single line are removed normally.
 
 ### `lines` / `rmline.py`
 
@@ -220,13 +228,13 @@ it up to the next `'` on that line. Curly quotes are ordinary characters.
 
 Makes the same changes as `whitespace`, indentation included, but uses a more
 cautious balanced-quote heuristic. It protects straight double quotes and curly
-single quotes (`‘…’`) only when the closing quote is on the same line. A
-straight single quote starts a protected region only at the start of a line or
-after a space, tab, or `=`, and only when another `'` follows on the same line,
-so apostrophes inside words are ordinary text. A backslash keeps the next
-character from closing a region. Unclosed quotes and curly double quotes
-protect nothing. It is useful when apostrophes appear in prose. Line endings
-are preserved.
+single quotes (`‘…’`) only when the closing quote is on the same line, whether
+lines end with LF, CRLF, or CR. A straight single quote starts a protected
+region only at the start of a line or after a space, tab, or `=`, and only when
+another `'` follows on the same line, so apostrophes inside words are ordinary
+text. A backslash keeps the next character from closing a region. Unclosed
+quotes and curly double quotes protect nothing. It is useful when apostrophes
+appear in prose. Line endings are preserved.
 
 ### `variables` / `varsub.py`
 

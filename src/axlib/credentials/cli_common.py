@@ -189,7 +189,8 @@ def collect_values(
 
     Raises:
         ValueError: If an assignment is invalid or a prompted value is empty.
-        EOFError: If a non-interactive input source cannot satisfy a prompt.
+        EOFError: If input ends before a prompted value is entered; the
+            message names the field.
     """
     values: dict[str, str] = {}
     for assignment in direct_assignments:
@@ -200,9 +201,16 @@ def collect_values(
         values[field] = value
     for raw_field in prompt_fields:
         field = validate_field_name(raw_field)
-        # getpass disables terminal echo, reducing accidental disclosure during
-        # shared-screen troubleshooting or recorded terminal sessions.
-        value = getpass.getpass(f"{field}: ")
+        try:
+            # getpass disables terminal echo, reducing accidental disclosure
+            # during shared-screen troubleshooting or recorded sessions.
+            value = getpass.getpass(f"{field}: ")
+        except EOFError as exc:
+            # A bare EOFError has no message, so the CLI would print only
+            # "error: ".  Say which field was being read and what happened.
+            raise EOFError(
+                f"Input ended before a value for {field!r} was entered."
+            ) from exc
         if not value:
             raise ValueError(f"Prompted value for {field!r} cannot be empty.")
         values[field] = value

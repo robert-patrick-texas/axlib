@@ -321,7 +321,11 @@ def _select_path(
             and not selected.is_absolute()
             and config_directory is not None
         ):
-            return (config_directory / selected).resolve(strict=False)
+            # Only the directory is resolved: resolving the whole path would
+            # follow a symlinked key file or database to its target, and the
+            # stores could no longer see, and refuse, the symlink.
+            joined = config_directory / selected
+            return joined.parent.resolve(strict=False) / joined.name
         return selected
     return optional_path(default)
 
@@ -369,24 +373,36 @@ def _read_toml(path: Path | None, *, required: bool) -> dict[str, Any]:
             file exists.
 
     Raises:
-        CredentialConfigurationError: If a required file is missing, unreadable,
-            or invalid TOML.
+        CredentialConfigurationError: If a required file is missing, if any
+            selected file exists but cannot be read, or if it is not valid
+            UTF-8 TOML.
     """
     if path is None:
         return {}
-    if not path.exists():
-        if required:
-            raise CredentialConfigurationError(
-                f"Credential configuration file does not exist: {path}"
-            )
-        return {}
 
     try:
-        # A context manager guarantees that the descriptor is closed even when
-        # TOML parsing fails, which matters on long-running automation workers.
+        # Opening the file is the only reliable test.  Path.exists() returns
+        # False whenever stat() is refused -- for example for a file inside
+        # /etc/axlib (mode 2750) and a user outside its group -- which would
+        # report a file that is there as missing.  A context manager closes
+        # the descriptor even when parsing fails, which matters on
+        # long-running automation workers.
         with path.open("rb") as handle:
             return tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        if not required:
+            return {}
+        raise CredentialConfigurationError(
+            f"Credential configuration file does not exist: {path}"
+        ) from exc
+    except OSError as exc:
+        # strerror is the short reason, such as "Permission denied"; str(exc)
+        # would repeat the path that the message already names.
+        raise CredentialConfigurationError(
+            f"Credential configuration file cannot be read: {path} "
+            f"({exc.strerror or exc})"
+        ) from exc
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
         raise CredentialConfigurationError(
             f"Unable to read credential configuration file {path}: {exc}"
         ) from exc
@@ -642,7 +658,8 @@ def load_settings(
         CredentialSettings: Validated immutable runtime settings.
 
     Raises:
-        CredentialConfigurationError: If TOML is invalid or a setting has an
+        CredentialConfigurationError: If the selected file does not exist or
+            cannot be read, its TOML is invalid, or a setting has an
             unsupported type or range.
     """
     environment = os.environ if environ is None else environ

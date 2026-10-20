@@ -9,10 +9,12 @@ green.  The palette is defined once as named constants and reused both by the
 Textual theme (which styles widgets through CSS variables such as ``$primary``)
 and by table cells that are colored individually.
 
-Textual detects what the terminal supports.  On a 256- or 16-color terminal it
-maps each color to the nearest available one, and when the ``NO_COLOR``
-environment variable is set it renders in monochrome -- no code here needs to
-check terminal capabilities.
+This module does not check what the terminal supports.  Textual cannot detect
+it either, so the launcher chooses the color system from ``COLORTERM`` and
+``TERM`` (see :func:`axlib.credentials.tui.color_system_for`) and passes it to
+Textual in ``TEXTUAL_COLOR_SYSTEM``.  On a 256- or 16-color terminal Textual
+then maps each color here to the nearest available one, and when the
+``NO_COLOR`` environment variable is set it renders in monochrome.
 
 Dependencies:
     ``textual`` (the optional ``tui`` extra: ``uv add 'axlib[tui]'``).
@@ -74,7 +76,7 @@ AXLIB_DARK = Theme(
     },
 )
 
-# Colors for the NOTES column, keyed by the advice category from the admin API.
+# Colors for the ADVICE column, keyed by the advice category from the admin API.
 NOTE_COLORS: dict[NoteKind, str] = {
     NoteKind.OPERATOR: CYAN,
     NoteKind.SHARED: MAGENTA,

@@ -37,6 +37,18 @@ def test_shell_script_passes_shellcheck(script: Path) -> None:
     assert result.returncode == 0, result.stdout
 
 
+def test_install_moves_current_only_after_the_new_release_runs() -> None:
+    """``current`` must not name a release whose build or ``uv add`` failed."""
+    lines = (ROOT / "install.sh").read_text(encoding="utf-8").splitlines()
+
+    def first(fragment: str) -> int:
+        return next(i for i, line in enumerate(lines) if fragment in line)
+
+    move_current = first('ln -sfn "releases/axlib-$VERSION" "$PREFIX/current"')
+    assert move_current > first('"$UV" add ')
+    assert move_current > first('"$BIN_DIR/axlib" version')
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="checks the non-root refusal")
 def test_axuv_refuses_to_run_without_root() -> None:
     result = subprocess.run(  # noqa: S603

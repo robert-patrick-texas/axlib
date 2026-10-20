@@ -100,7 +100,9 @@ class CredentialFileRecord:
     """Safe metadata describing one encrypted text-file service record.
 
     Attributes:
-        service: Normalized service name used by :func:`axlib.getkeys`.
+        service: Service name exactly as stored.  The store never changes a
+            name; ``StoreAdmin``, the CLIs, and the TUI normalize it before
+            writing so that :func:`axlib.getkeys` finds it.
         fields: Sorted encrypted field names; secret values are never included.
         created_at: UTC timestamp recorded when the service was created.
         updated_at: UTC timestamp recorded after the latest change.
@@ -398,11 +400,13 @@ def _prepare_parent_directory(
                 f"Credential-file parent path is not a directory: {parent}"
             )
         return
+    # Resolve the names before mkdir(): a misspelled owner or group must fail
+    # without leaving a new, wrongly owned directory behind.
+    uid = _resolve_owner_id(owner)
+    gid = _resolve_group_id(group)
     try:
         parent.mkdir(parents=True, mode=mode)
         parent.chmod(mode)
-        uid = _resolve_owner_id(owner)
-        gid = _resolve_group_id(group)
         if uid is not None or gid is not None:
             info = parent.stat()
             os.chown(
@@ -526,6 +530,11 @@ def generate_credential_file_key_file(
         default=DEFAULT_KEY_FILE_MODE,
         require_owner_write=False,
     )
+    # Resolve identities before creating anything, as
+    # generate_sqlite_key_file() does: a misspelled owner or group should fail
+    # before a directory or a key file is created.
+    _resolve_owner_id(owner)
+    _resolve_group_id(group)
     parent_mode = 0o2750 if group is not None else 0o700
     _prepare_parent_directory(path, mode=parent_mode, owner=owner, group=group)
     if path.exists() or path.is_symlink():
@@ -1182,6 +1191,46 @@ class CredentialFileStore:
             )
         return self._decrypt_values(service, nonce, ciphertext), created_at, updated_at
 
+    def _record_services(self, parser: configparser.ConfigParser) -> list[str]:
+        """Return the service of every record section, checking each section.
+
+        :meth:`list_records` and :meth:`rotate_key` both walk every record, so
+        they share this one check and report a damaged file the same way.
+
+        Args:
+            parser (configparser.ConfigParser): Verified credential document.
+
+        Returns:
+            list[str]: Service names in file order.
+
+        Raises:
+            CredentialBackendError: If a section is not an axlib record, has no
+                ``service`` entry, or its name does not match its service.
+        """
+        services: list[str] = []
+        for section_name in parser.sections():
+            if section_name == METADATA_SECTION:
+                continue
+            if not section_name.startswith(RECORD_SECTION_PREFIX):
+                raise CredentialBackendError(
+                    f"Unsupported section in encrypted credential file: "
+                    f"{section_name!r}."
+                )
+            try:
+                service = parser[section_name]["service"]
+            except KeyError as exc:
+                raise CredentialBackendError(
+                    f"Credential-file section {section_name!r} is missing "
+                    "its service identity."
+                ) from exc
+            if self._section_name(service) != section_name:
+                raise CredentialBackendError(
+                    f"Credential-file section identity is malformed for "
+                    f"service {service!r}."
+                )
+            services.append(service)
+        return services
+
     def _set_record(
         self,
         parser: configparser.ConfigParser,
@@ -1589,28 +1638,7 @@ class CredentialFileStore:
         records: list[CredentialFileRecord] = []
         with self._locked(exclusive=False):
             parser = self._load_parser()
-            for section_name in parser.sections():
-                if section_name == METADATA_SECTION:
-                    continue
-                if not section_name.startswith(RECORD_SECTION_PREFIX):
-                    raise CredentialBackendError(
-                        f"Unsupported section in encrypted credential file: "
-                        f"{section_name!r}."
-                    )
-                section = parser[section_name]
-                try:
-                    service = section["service"]
-                except KeyError as exc:
-                    raise CredentialBackendError(
-                        f"Credential-file section {section_name!r} is missing "
-                        "its service identity."
-                    ) from exc
-                expected_section = self._section_name(service)
-                if expected_section != section_name:
-                    raise CredentialBackendError(
-                        f"Credential-file section identity is malformed for "
-                        f"service {service!r}."
-                    )
+            for service in self._record_services(parser):
                 record = self._read_record(parser, service)
                 if record is None:  # defensive; section was just observed.
                     continue
@@ -1629,6 +1657,47 @@ class CredentialFileStore:
                     )
                 )
         return sorted(records, key=lambda record: record.service.casefold())
+
+    def check_key_rotation(self) -> tuple[Path, Path]:
+        """Refuse a key rotation that cannot be completed safely.
+
+        :meth:`rotate_key` runs these checks before it changes anything, and
+        ``axlib credential-file rotate-key --dry-run`` runs them on their own,
+        so a dry run refuses exactly what a real rotation would.
+
+        Args:
+            None: The key settings come from this provider's settings.
+
+        Returns:
+            tuple[pathlib.Path, pathlib.Path]: The configured key file, and the
+                ``<key_file>.rotating`` staging file a rotation writes first.
+
+        Raises:
+            CredentialConfigurationError: If the key is set through
+                ``AXLIB_CREDENTIAL_FILE_KEY``, no key file is configured, or a
+                previous rotation left its staging file behind.
+        """
+        if self.settings.credential_file_key is not None:
+            raise CredentialConfigurationError(
+                "Credential-file key rotation requires a configured key file; "
+                "AXLIB_CREDENTIAL_FILE_KEY cannot be rotated in place because "
+                "axlib cannot update the calling shell's environment."
+            )
+        if self.settings.credential_file_key_file is None:
+            raise CredentialConfigurationError(
+                "Credential-file key rotation requires credential_file.key_file "
+                "or AXLIB_CREDENTIAL_FILE_KEY_FILE."
+            )
+        key_file = self.settings.credential_file_key_file.expanduser()
+        staged_key_path = key_file.with_name(key_file.name + ".rotating")
+        if staged_key_path.exists():
+            raise CredentialConfigurationError(
+                "A previous credential-file key rotation may not have "
+                f"completed: found leftover staging file {staged_key_path}. "
+                "Verify it, then either move it into place as the key file or "
+                "remove it before retrying."
+            )
+        return key_file, staged_key_path
 
     def rotate_key(self, new_key: bytes) -> int:
         """Re-encrypt every record and the key-check marker under a new key.
@@ -1671,26 +1740,7 @@ class CredentialFileStore:
                 f"{KEY_LENGTH} bytes for AES-256-GCM; received "
                 f"{len(new_key)} bytes."
             )
-        if self.settings.credential_file_key is not None:
-            raise CredentialConfigurationError(
-                "Credential-file key rotation requires a configured key file; "
-                "AXLIB_CREDENTIAL_FILE_KEY cannot be rotated in place because "
-                "axlib cannot update the calling shell's environment."
-            )
-        if self.settings.credential_file_key_file is None:
-            raise CredentialConfigurationError(
-                "Credential-file key rotation requires credential_file.key_file "
-                "or AXLIB_CREDENTIAL_FILE_KEY_FILE."
-            )
-        key_file = self.settings.credential_file_key_file.expanduser()
-        staged_key_path = key_file.with_name(key_file.name + ".rotating")
-        if staged_key_path.exists():
-            raise CredentialConfigurationError(
-                "A previous credential-file key rotation may not have "
-                f"completed: found leftover staging file {staged_key_path}. "
-                "Verify it, then either move it into place as the key file or "
-                "remove it before retrying."
-            )
+        key_file, staged_key_path = self.check_key_rotation()
 
         aesgcm_class, _ = _load_aesgcm()
         new_aesgcm = aesgcm_class(new_key)
@@ -1698,10 +1748,7 @@ class CredentialFileStore:
         with self._locked(exclusive=True):
             parser = self._load_parser()  # verifies format/version/key
             rotated: list[tuple[str, dict[str, str]]] = []
-            for section_name in parser.sections():
-                if section_name == METADATA_SECTION:
-                    continue
-                service = parser[section_name]["service"]
+            for service in self._record_services(parser):
                 record = self._read_record(parser, service)
                 if record is None:  # defensive; section was just observed.
                     continue

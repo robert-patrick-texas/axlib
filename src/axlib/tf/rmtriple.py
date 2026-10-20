@@ -32,18 +32,23 @@ TRIPLE_QUOTE_PATTERN = re.compile(r"(\'\'\'|\"\"\")((?:[^\\]|\\.)*?)\1", re.DOTA
 
 
 def _flatten_match(match: re.Match[str]) -> str:
-    """Replace newlines inside one matched block before per-line cleanup.
+    r"""Replace line breaks inside one matched block before per-line cleanup.
 
     Args:
         match (re.Match[str]): Triple-quoted span found by the compiled pattern.
 
     Returns:
-        str: Same matched text with embedded ``\n`` characters changed to spaces.
+        str: Same matched text with each embedded line break (``\n``,
+            ``\r\n``, ``\r``, or any other break :meth:`str.splitlines`
+            recognizes) changed to one space.
 
     Raises:
-        None: The replacement is a direct string operation.
+        None: Splitting and joining are direct string operations.
     """
-    return match.group(0).replace("\n", " ")
+    # Using splitlines() here, the same rule that later splits the text into
+    # lines, guarantees each span ends up on one line whatever the line endings
+    # are.  A span starts and ends with quotes, so no break is lost at its edges.
+    return " ".join(match.group(0).splitlines())
 
 
 def remove_triple_quoted(text: str) -> str:

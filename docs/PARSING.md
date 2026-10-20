@@ -38,8 +38,8 @@ plus one template of our own:
 ```console
 $ cd examples/parse
 $ axlib parse diff -p cisco_ios -t templates before after
-axlib parse diff (before): skipped 2 command(s) with no template (-v lists them)
-axlib parse diff (after): skipped 1 command(s) with no template (-v lists them)
+axlib parse diff (before): skipped 2 command(s) (-v lists them and why)
+axlib parse diff (after): skipped 1 command(s) (-v lists them and why)
 sw1: show cdp neighbors
   - local_interface=GigabitEthernet1/0/5 neighbor_name=ap-lobby-01
   ~ local_interface=GigabitEthernet1/0/48 neighbor_name=core-rtr-01.example.net
@@ -182,16 +182,18 @@ A command is **skipped** when no template parses it (`terminal length 0`,
 `show running-config`) or when its output was filtered with `|`
 (`| include`, `| begin`, ...). A template can't tell which lines are missing
 from filtered output. A trailing `| no-more` (Junos) doesn't change the output
-and is ignored. `axlib parse` prints how many commands it skipped, and `-v`
-lists them.
+and is ignored. `axlib parse` prints how many commands it skipped, binary
+files included, and `-v` lists each one with the reason.
 
 A command **fails** when its template rejects the output (the template reached
 an `Error` state on a line it didn't expect) or when its abbreviation fits
 more than one command. Failures are always printed, with the message, and they
 make the exit status of `axlib parse` 1. `axlib parse diff` prints them too,
-but its exit status reports only differences: a command that failed on one
-side is listed as `only before` or `only after`, and one that failed on both
-sides is not compared at all. See [Troubleshooting](#troubleshooting).
+along with the differences it found, but its exit status is 2, because the
+comparison is incomplete: a command that failed on one side is listed as
+`only before` or `only after`, and one that failed on both sides is not
+compared at all. Skipped commands don't change the exit status of
+`axlib parse diff`. See [Troubleshooting](#troubleshooting).
 
 ## Output
 
@@ -231,6 +233,13 @@ capture options (`-r`, `--glob`, `--command`, `--host`, `--marker`,
 `--encoding`) and the template options (`-p`, `-t`, `--config`) apply to
 whichever side is captures. `-v` lists the skipped commands of each side.
 
+A side that starts like JSON (`{` and then `"`) must be a valid snapshot. A
+damaged one, such as a file cut short when the disk filled, stops the
+comparison with `not valid JSON` and exit status 2, and another kind of JSON
+file stops it with `JSON but not an axlib parse snapshot`; neither is read as
+a capture. Other text, including a Junos log that starts with `{master:0}`,
+is read as a capture.
+
 Within each command, records are paired by their key:
 
 | Mark | Meaning |
@@ -248,12 +257,19 @@ explained under [How records are made comparable](#how-records-are-made-comparab
 When nothing differs, the report is one line, such as
 `No differences in 9 commands.`
 
+When a command on either side failed to parse, the differences are still
+listed, the failures are printed to standard error, and the summary line says
+how many commands could not be compared, for example
+`9 commands compared: 7 changed, 0 only before, 0 only after, 2 unchanged; 1 failed to parse and could not be compared`.
+The exit status is then 2.
+
 `--ignore FIELD` leaves a field out of the comparison, for example
 `--ignore name` when port descriptions were rewritten on purpose; repeat it
 for more fields. `--json` prints every command compared, each change with both
-records and the fields that changed, and a summary of counts. If a capture
-holds the same command twice for one device, the later one is compared and a
-note says so.
+records and the fields that changed, the failures with the `side` each came
+from, and a summary of counts that includes `failed`. If a capture holds the
+same command twice for one device, the later one is compared and a note says
+so.
 
 ## Adding your own templates
 
@@ -274,6 +290,10 @@ never hides the team's. A directory named with `-t`,
 `AXLIB_TEXTFSM_TEMPLATES`, `template_dirs`, or `NTC_TEMPLATES_DIR` must exist,
 or the command stops with an error. Only the default `textfsm` directory
 beside `axlib.toml` may be missing.
+
+`NTC_TEMPLATES_DIR` replaces the ntc-templates collection. axlib reads it like
+any other template directory: by its `index` file if it has one, otherwise by
+file name. netmiko needs an `index` there; axlib doesn't.
 
 `axlib parse templates` shows the search path, and with a command it shows
 which template parses that command. `--json` prints the same as JSON:
@@ -480,17 +500,20 @@ for command in compare(before, after).differences:
   `templates`, `origin`). Its `problems` are `Problem`s (`kind` is `skipped` or `failed`,
   then `message`, `command`, `host`, `source`, `line`), and `failures` lists
   only the failed ones. `Snapshot.to_dict()` gives the JSON form, and
-  `load_snapshot(text)` reads it back. That returns `None` for text that isn't
-  a snapshot, including JSON that doesn't parse, such as a truncated file. It
-  raises `SnapshotFormatError` for a snapshot of another version or one with
-  missing or invalid fields.
+  `load_snapshot(text)` reads it back. That returns `None` for text that
+  doesn't start like JSON (`{` and then `"`), such as a capture. It raises
+  `SnapshotFormatError` for JSON-like text that doesn't parse, such as a
+  truncated file, for JSON that is not a snapshot, and for a snapshot of
+  another version or one with missing or invalid fields.
 - `compare(before, after, ignore=...)` returns a `SnapshotDiff`. Its
   `commands` are `CommandDiff`s (`device`, `command`, `status`, `changes`,
   and a `records` count for a command on one side only), where `status` is
   `same`, `changed`, `only-before`, or `only-after`. `differences` lists the
-  ones that aren't `same`. Each change is a `RecordChange` (`kind`, `key`,
-  `before`, `after`, and the changed `fields`). `to_dict()` gives the
-  `--json` form.
+  ones that aren't `same`. `before_failures` and `after_failures` hold each
+  side's failed `Problem`s, and `failures` joins them. When `failures` isn't
+  empty, the comparison is incomplete. Each change is a `RecordChange`
+  (`kind`, `key`, `before`, `after`, and the changed `fields`). `to_dict()`
+  gives the `--json` form.
 - `TemplateCatalog.default(template_dirs=[...], platform=...)` loads the
   template search path once, to pass as `catalog=` to many calls.
   `TemplateCatalog.load(sources, platform=...)` builds one from your own list
@@ -515,7 +538,7 @@ runs it too. Each module also runs on its own: `python -m axlib.parse.capture`
 | Command | 0 | 1 | 2 |
 |---|---|---|---|
 | `axlib parse` | output parsed (skipped commands are fine) | a command failed, or nothing was parsed | error: unreadable file, no platform, TextFSM missing, bad settings |
-| `axlib parse diff` | no differences | differences | the comparison could not be made |
+| `axlib parse diff` | no differences | differences | the comparison could not be made (unreadable file, damaged snapshot, no platform), or a command on either side failed to parse; skipped commands don't count |
 | `axlib parse templates` | template found, or the search path listed | no template, or ambiguous | error: no platform, bad settings, missing template directory |
 | `axlib parse split` | commands listed (even none) | not used | error: unreadable file, bad `--marker` |
 
@@ -551,6 +574,12 @@ Spell out more of the command.
 **`no commands found`**
 No line looked like a command. Use `--command` for output without command
 lines, or `--marker` for a header format of your own.
+
+**`axlib parse diff: before.json: not valid JSON: ...`**
+The snapshot file is damaged, usually cut short because the disk filled or a
+copy was interrupted. Write it again with `axlib parse ... -o before.json`,
+or compare with the captures it was made from. `JSON but not an axlib parse
+snapshot` means the file is some other JSON document, given by mistake.
 
 **A difference you don't care about**
 Use `--ignore FIELD` on `axlib parse diff`. If the field changes on every

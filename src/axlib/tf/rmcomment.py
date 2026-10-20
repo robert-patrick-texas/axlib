@@ -222,10 +222,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             preserve_line_endings=args.preserve_line_endings,
         )
         write_text(args.output, output, encoding=args.encoding)
-    except ValueError as exc:
-        parser.error(str(exc))
+    # UnicodeDecodeError and UnicodeEncodeError are ValueError subclasses, and
+    # Python uses the first matching handler, so the operational errors must be
+    # caught before ValueError, which here means a bad comment marker.
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
         return render_cli_error(PROGRAM, exc)
+    except ValueError as exc:
+        parser.error(str(exc))
     return 0
 
 

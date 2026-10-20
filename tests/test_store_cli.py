@@ -12,11 +12,12 @@ from pathlib import Path
 import pytest
 
 from axlib.credentials import admin as admin_module
-from axlib.credentials import store_cli
+from axlib.credentials import cli_common, store_cli
 from axlib.credentials.admin import StoreKind
 
 from .conftest import write_store_config
 from .test_credential_admin import _FakeCache
+from .test_settings import NOT_ROOT, locked_directory
 
 BOTH_KINDS = pytest.mark.parametrize("kind", list(StoreKind))
 
@@ -178,3 +179,94 @@ def test_cache_failure_is_reported_after_a_successful_change(
     assert "status=added" in output
     assert "cache=stale" in output
     assert "Redis cache could not be cleared" in capsys.readouterr().err
+
+
+def test_a_prompt_that_reaches_the_end_of_input_names_the_field(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def end_of_input(_prompt: str) -> str:
+        raise EOFError
+
+    # getpass reads from the terminal when there is one, so the end of input
+    # is simulated rather than produced with an empty standard input.
+    monkeypatch.setattr(cli_common.getpass, "getpass", end_of_input)
+    config = _initialized(tmp_path, StoreKind.SQLITE)
+
+    with pytest.raises(SystemExit) as caught:
+        _run(
+            StoreKind.SQLITE,
+            config,
+            "add",
+            "--service",
+            "ops",
+            "--set",
+            "netuser=ops",
+            "--prompt",
+            "netpass",
+        )
+
+    assert caught.value.code == 2
+    error = capsys.readouterr().err.splitlines()[-1]
+    assert error == (
+        "axlib credential-db: error: Input ended before a value for 'netpass' "
+        "was entered."
+    )
+
+
+def _key_file(kind: StoreKind, tmp_path: Path) -> Path:
+    """Return the key file that ``write_store_config()`` sets up for ``kind``."""
+    name = "sqlite.key" if kind is StoreKind.SQLITE else "file.key"
+    return tmp_path / "keys" / name
+
+
+@BOTH_KINDS
+@pytest.mark.parametrize("refusal", ["staging-file", "direct-key"])
+def test_rotate_key_dry_run_refuses_what_the_real_rotation_refuses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kind: StoreKind,
+    refusal: str,
+) -> None:
+    config = _initialized(tmp_path, kind)
+    key_file = _key_file(kind, tmp_path)
+    if refusal == "staging-file":
+        # What an interrupted rotation leaves behind.
+        key_file.with_name(key_file.name + ".rotating").write_text("leftover\n")
+    else:
+        # The same key, injected through the store's direct key variable.
+        monkeypatch.setenv(kind.key_env_var, key_file.read_text().strip())
+    capsys.readouterr()
+
+    dry_status, dry_output = _run(
+        kind, config, "rotate-key", "--generate-key", "--dry-run"
+    )
+    dry_error = capsys.readouterr().err
+    real_status, real_output = _run(
+        kind, config, "rotate-key", "--generate-key", "--yes"
+    )
+    real_error = capsys.readouterr().err
+
+    assert (dry_status, dry_output, dry_error) == (real_status, real_output, real_error)
+    assert dry_status == 1
+    assert dry_error.startswith(f"axlib-{kind.command}: ")
+    expected = "staging file" if refusal == "staging-file" else kind.key_env_var
+    assert expected in dry_error
+
+
+@NOT_ROOT
+def test_an_unreadable_config_file_is_reported_as_unreadable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_store_config(tmp_path)
+
+    with locked_directory(tmp_path):
+        status, _ = _run(StoreKind.SQLITE, config, "list")
+
+    assert status == 1
+    assert capsys.readouterr().err == (
+        "axlib-credential-db: Credential configuration file cannot be read: "
+        f"{config} (Permission denied)\n"
+    )

@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import ClassVar, TypeVar
 
 from textual.app import ComposeResult
+from textual.await_complete import AwaitComplete
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.markup import escape
@@ -542,8 +543,27 @@ class RecordFormScreen(DialogScreen[RecordChange]):
             self._clear_secrets()
             self.show_error(f"Unexpected {type(exc).__name__}: {exc}")
             return
-        self._clear_secrets()
         self.dismiss(change)
+
+    def dismiss(self, result: RecordChange | None = None) -> AwaitComplete:
+        """Close the form, emptying every password box first.
+
+        Saving, *Cancel*, and ``Escape`` all close the form through this one
+        method, so overriding it is how the boxes are emptied on every way out
+        rather than only on the paths someone remembered.
+
+        Args:
+            result (RecordChange | None): The validated change, or ``None``
+                when the form was cancelled.
+
+        Returns:
+            AwaitComplete: Textual's handle for the screen being removed.
+
+        Raises:
+            None: Clearing inputs and dismissing a modal screen cannot fail.
+        """
+        self._clear_secrets()
+        return super().dismiss(result)
 
     def _collect(self) -> RecordChange:
         """Read, compare, and validate every input.

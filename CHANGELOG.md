@@ -13,6 +13,32 @@
 - Fixed: `axlib parse` now parses a command run from a configuration mode with `do` (`sw1(config)#do show ip int br`); before, it was skipped as having no template.
 - Fixed: `axlib credentials` and the `axlib tf` filters name themselves in usage lines (`usage: axlib tf comments ...` instead of `usage: axlib ...`) and in error messages (`axlib tf whitespace: ...` instead of `rmwhite: ...`).
 - Fixed: `axlib tf variables` kept the second of three assignments to a name given in different cases (`-v host=a -v Host=b -v host=c` gave `b`); the last one now wins, as documented.
+- Fixed credential handling:
+  - A key file or database named by a relative path in `axlib.toml` that is a symlink is now refused like any other symlink; resolving the whole path used to follow the link to its target.
+  - `axlib credentials` prints one line and exits 2 when the configuration file is missing or unreadable, instead of a Python traceback.
+  - A configuration file that exists but cannot be read (such as `/etc/axlib/axlib.toml` for a user outside `netops`) is reported as `cannot be read: PATH (Permission denied)` by every tool, not as `does not exist`; a file that is not UTF-8 is an error instead of a traceback.
+  - A symlinked, non-regular, or unfixable SQLite key file is reported as itself by `list`, `add`, and `read`, instead of as `key-check metadata is invalid`. Messages say `SQLite`, not `Sqlite`.
+  - `rotate-key --dry-run`, the TUI's `k`, and the rotation itself make the same checks (a key from the environment, no key file, a leftover `.rotating` file), so a dry run no longer passes what the rotation then refuses. The checks are `check_key_rotation()` on both stores and `StoreAdmin`.
+  - `--prompt FIELD` names the field when input ends, instead of printing an empty `error:`.
+  - Key generation and store initialization check the owner and group before creating a missing parent directory, so a typo no longer leaves an empty directory behind.
+  - The text store reports a record without a `service` line as a damaged store in `list` and `rotate-key`, instead of a `KeyError`.
+  - The TUI empties password boxes whenever a form closes, including Cancel and Escape, not only on Save.
+- Fixed `install.sh`:
+  - `--no-store` writes `enabled = false` under `[sqlite]` in a new `axlib.toml`; it wrote `enabled = true`, so every lookup warned that the database did not exist.
+  - `current` moves to the new release only after the environment runs it. A failed build or `uv add` left `current` naming a release that was not installed.
+  - A failure before `uv add` finishes restores the project's `pyproject.toml` and `uv.lock` (which `uv remove` had changed when a part was turned off) and removes the copy and wheel of the release that was never installed.
+  - A failing store health check at the end prints a warning and the command to rerun it, then the summary; the installer used to stop with status 1 after installing everything.
+  - Every `AXLIB_*` variable in root's environment is ignored while it runs. Only four were, so `sudo -E` or `sudo -i` could give the new store the wrong group, modes, or a Redis cache.
+- Fixed `axlib parse diff`: a command that failed to parse on either side now makes the exit status 2 and is counted in the summary ("N failed to parse and could not be compared") and in `--json` (`failures`, `summary.failed`); the comparison used to exit 0, printing "No differences in 0 commands." when nothing was compared. `SnapshotDiff` has `before_failures`, `after_failures`, and `failures`.
+- Fixed `axlib parse diff` and `load_snapshot()`: a truncated snapshot (`not valid JSON`) or another JSON file (`JSON but not an axlib parse snapshot`) is an error, exit 2. Both used to be read as a capture with no commands.
+- `axlib parse` reports skipped commands as "skipped N command(s) (-v lists them and why)"; "with no template" was wrong for filtered output and binary files.
+- Fixed `axlib radius`: end of input at the password or secret prompt prints what was being read and how to give it in a script, exit 2, instead of an empty `radius:` message. `--password-stdin` with no input at all is an error instead of sending an empty password; an empty line is still an empty password.
+- Fixed text filters:
+  - `triple-quotes` removes spans that cross lines in CRLF and CR-only text; it used to leave them and turn each `\n` inside into a space.
+  - `include` and `comments` report undecodable input as an error with status 1, like the other filters, instead of a usage message with status 2.
+  - `include` ends an included file that lacks a final line ending with the directive line's ending, so it no longer runs into the next line.
+  - `include` blocks a cycle back to the input file the first time; the file's content used to repeat once. `expand_includes()` takes `source_path=` for this, and a cycle is blocked even with `--no-recursive` or at the depth limit.
+  - `whitespace-safe` ends quoted text at CR as well as LF line endings.
 
 ## 1.0.6 - 2026-10-20
 

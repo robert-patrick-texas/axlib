@@ -222,6 +222,18 @@ def test_ntc_templates_dir_replaces_the_collection(tmp_path: Path) -> None:
     assert catalog.resolve("show x", "lab_os").entry.directory == directory
 
 
+def test_ntc_templates_dir_without_an_index_uses_file_names(tmp_path: Path) -> None:
+    # Unlike netmiko, axlib reads NTC_TEMPLATES_DIR like any template
+    # directory, so templates named <platform>_<command>.textfsm need no index.
+    directory = write_templates(tmp_path, "lab_os_show_x.textfsm")
+
+    catalog = TemplateCatalog.load(environ={"NTC_TEMPLATES_DIR": str(directory)})
+    match = catalog.resolve("sh x", "lab_os")
+
+    assert catalog.directories[0].describe() == "1 template by file name"
+    assert (match.entry.directory, match.template_command) == (directory, "show x")
+
+
 def test_settings_order_environment_then_toml(tmp_path: Path) -> None:
     config = tmp_path / "axlib.toml"
     config.write_text(

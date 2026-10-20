@@ -36,7 +36,7 @@ The package root offers these read-only helpers. Missing fields come back as `No
 
 `ax.updatedict(dict1, dict2)` fills the `None` values in `dict1` from `dict2` and returns `dict1`. Two more names remain in `axlib.secrets` for old scripts: `servicenamefilter(service)` returns the normalized service name (`first.last` becomes `firstlast`), and `printkv(mapping)` prints every key and value, so never pass it credentials.
 
-These helpers load their settings through `axlib.config`, once, when they are first used, from `AXLIB_CONFIG_FILE` or the install record (see [Configuration](#configuration)); they take no configuration-file argument. To use another file in a script, set `AXLIB_CONFIG_FILE` before the first credential call, or call `axlib.config.refresh("/path/to/axlib.toml")`. An invalid configuration, such as a selected TOML file that does not exist, raises `axlib.credentials.CredentialConfigurationError`. Backend failures (an unreachable Redis server, a wrong key, an unreadable store) are only reported, as described above.
+These helpers load their settings through `axlib.config`, once, when they are first used, from `AXLIB_CONFIG_FILE` or the install record (see [Configuration](#configuration)); they take no configuration-file argument. To use another file in a script, set `AXLIB_CONFIG_FILE` before the first credential call, or call `axlib.config.refresh("/path/to/axlib.toml")`. An invalid configuration, such as a selected TOML file that does not exist or cannot be read, raises `axlib.credentials.CredentialConfigurationError`. Backend failures (an unreachable Redis server, a wrong key, an unreadable store) are only reported, as described above.
 
 ## Checking a lookup (`axlib credentials`)
 
@@ -54,7 +54,7 @@ netpass=set
 netenable=set
 ```
 
-`network` checks `netuser`, `netpass`, and `netenable`, including the shared-service fallback; `--service` defaults to `$USER`. `infoblox` checks `ibgrid`, `ibuser`, and `ibpass`; `--service` defaults to `infoblox`. The exit status is `0` when `netuser` and `netpass` (for `infoblox`, all three fields) were found, and `1` otherwise. Warnings, such as the switch to the shared service, go to standard error. The command has no `--config` option: it uses `AXLIB_CONFIG_FILE`, else the install record. `python -m axlib.secrets` runs the same command.
+`network` checks `netuser`, `netpass`, and `netenable`, including the shared-service fallback; `--service` defaults to `$USER`. `infoblox` checks `ibgrid`, `ibuser`, and `ibpass`; `--service` defaults to `infoblox`. The exit status is `0` when `netuser` and `netpass` (for `infoblox`, all three fields) were found, and `1` when one is missing. When the check cannot run, for example because the configuration file does not exist or cannot be read, the command prints one line to standard error, starting with `axlib credentials:`, and exits with status `2`. Warnings, such as the switch to the shared service, also go to standard error. The command has no `--config` option: it uses `AXLIB_CONFIG_FILE`, else the install record. `python -m axlib.secrets` runs the same command.
 
 ## Configuration
 
@@ -102,7 +102,7 @@ axlib reads one TOML file and never searches directories for it. It uses the fir
 2. the file named by `AXLIB_CONFIG_FILE`,
 3. `CONFIG_FILE` in `/etc/axlib/install.env`, which `install.sh` writes on a shared host (see [INSTALL.md](INSTALL.md)).
 
-`axlib.credentials.default_config_file()` returns the file that steps 2 and 3 select. With no file, settings come from `AXLIB_*` variables and built-in defaults alone. A file that is selected but does not exist is an error (`Credential configuration file does not exist: ...`), whichever step selected it; an install record that the user cannot read is treated as absent.
+`axlib.credentials.default_config_file()` returns the file that steps 2 and 3 select. With no file, settings come from `AXLIB_*` variables and built-in defaults alone. A file that is selected but does not exist is an error (`Credential configuration file does not exist: ...`), whichever step selected it. So is a file that exists but cannot be read, with the reason in parentheses: for example, `AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml` for a user outside the group of `/etc/axlib` (mode `2750`) gives `Credential configuration file cannot be read: /etc/axlib/axlib.toml (Permission denied)`. An install record that the user cannot read is treated as absent.
 
 Among the credential tools, `--config` is accepted by `axlib credential-db`, `axlib credential-file`, `axlib credential-tui`, `axlib netenv-set`, and `python -m axlib.credentials.admin`. `axlib credentials` and the lookup helpers have no such option.
 
@@ -251,7 +251,7 @@ networkshared  netenable,netpass,netuser,note  2026-10-20T07:13:42Z  2026-10-20T
 
 `init` without `--generate-key` creates a missing store with the configured key, or verifies an existing one (format, key, and file protection); it never migrates or overwrites anything. `init --generate-key` first creates the configured key file with a random key. It refuses to replace an existing key file, and it is refused while `AXLIB_SQLITE_KEY` (for `credential-db`) or `AXLIB_CREDENTIAL_FILE_KEY` (for `credential-file`) is set, because that variable would take precedence over the new file.
 
-`rotate-key` re-encrypts every record and the store's key-check marker under a new AES-256 key, replacing the configured key file only after the durable store has already been updated. `--generate-key` makes a random key; `--new-key-file PATH` uses a key produced elsewhere (the file is read and checked even with `--dry-run`). Rotation requires a key file and is refused while the store's direct key variable is set, because axlib cannot update the calling shell's environment; see [CREDENTIAL_FILE.md](CREDENTIAL_FILE.md#rotate_key) and [SQLITE_CREDENTIALS.md](SQLITE_CREDENTIALS.md#rotate_key) for the interrupted-rotation recovery path.
+`rotate-key` re-encrypts every record and the store's key-check marker under a new AES-256 key, replacing the configured key file only after the durable store has already been updated. `--generate-key` makes a random key; `--new-key-file PATH` uses a key produced elsewhere (the file is read and checked even with `--dry-run`). Rotation requires a key file and is refused while the store's direct key variable is set, because axlib cannot update the calling shell's environment. It is also refused while a `<key_file>.rotating` file from an interrupted rotation exists. `--dry-run` makes the same checks and fails with the same message and exit status as a real run. See [CREDENTIAL_FILE.md](CREDENTIAL_FILE.md#rotate_key) and [SQLITE_CREDENTIALS.md](SQLITE_CREDENTIALS.md#rotate_key) for the interrupted-rotation recovery path.
 
 ### Output and exit statuses
 
@@ -274,7 +274,7 @@ Exit statuses:
 | --- | --- |
 | `0` | Success, including a dry run. |
 | `1` | The store could not be opened or changed (configuration, key, permissions, or format); `add` of a service that already exists; `update` of a service that does not exist; `delete` of a service that does not exist (`status=not-found`); or a change saved with `cache=stale`. The message goes to standard error, prefixed `axlib-credential-db:` or `axlib-credential-file:`. |
-| `2` | The command line was wrong: an unknown option, an invalid service or field name, a field the profile does not allow, a missing required field, removing a required field, a refused note, a missing `--yes`, an unset `--from-env` variable, or an empty prompted value. Usage and the message go to standard error. |
+| `2` | The command line was wrong: an unknown option, an invalid service or field name, a field the profile does not allow, a missing required field, removing a required field, a refused note, a missing `--yes`, an unset `--from-env` variable, an empty prompted value, or input that ends before a prompted value is entered. Usage and the message go to standard error. |
 
 ## Record profiles
 
@@ -354,6 +354,7 @@ admin.rotate_key()  # new random key; returns the record count
 | `update(service, values=None, *, remove=(), profile=NETWORK_PROFILE)` | `ChangeResult`; sets `values`, then removes the `remove` fields. |
 | `delete(service)` | `ChangeResult` for the whole record. |
 | `rotate_key(new_key=None)` | Number of records re-encrypted; `None` generates a random key, or pass your own 32 bytes. |
+| `check_key_rotation()` | Raises the `CredentialConfigurationError` that `rotate_key()` would raise for a set direct key variable, a missing key file, or a leftover `<key_file>.rotating`, and changes nothing. `rotate-key --dry-run` uses it. |
 | `load_key_file(path)` | The 32-byte key read and checked from a key file, for `rotate_key()`. |
 
 `ChangeResult` has `service` (normalized), `action` (`"added"`, `"updated"`, or `"deleted"`), `fields` and `removed` (field names), and `cache_error` (`None`, or why Redis could not be cleared; the change is saved either way).

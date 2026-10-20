@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from axlib.tf.incfile import expand_includes
 from axlib.tf.rmcomment import strip_comments
 from axlib.tf.rmdouble import remove_double_slash
@@ -48,6 +50,67 @@ def test_expand_includes_cycle_and_missing_are_visible(tmp_path: Path) -> None:
     assert missing == "@include absent.conf\n"
 
 
+def test_expand_includes_blocks_cycle_back_to_source_file(tmp_path: Path) -> None:
+    top = tmp_path / "top.conf"
+    top.write_text("top\n@include b.conf\n", encoding="utf-8")
+    (tmp_path / "b.conf").write_text("bee\n@include top.conf\n", encoding="utf-8")
+    text = top.read_text(encoding="utf-8")
+
+    # The source file counts as already being expanded, and its directory is
+    # the default base for relative paths.
+    from_file = expand_includes(text, source_path=top)
+    # Text without a source file, such as standard input, has no path to block,
+    # so top.conf is inserted once before the repeated file stops the cycle.
+    no_source = expand_includes(text, base_dir=tmp_path)
+
+    assert from_file == "top\nbee\n@include top.conf\n"
+    assert no_source == "top\nbee\ntop\n@include b.conf\n"
+
+
+def test_expand_includes_blocks_self_include_without_recursion(
+    tmp_path: Path,
+) -> None:
+    top = tmp_path / "top.conf"
+    top.write_text("top\n@include top.conf\n", encoding="utf-8")
+    text = top.read_text(encoding="utf-8")
+
+    assert expand_includes(text, source_path=top, recursive=False) == text
+    assert expand_includes(text, source_path=top, max_depth=0) == text
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"])
+@pytest.mark.parametrize("recursive", [True, False])
+def test_expand_includes_ends_unterminated_file_like_directive(
+    tmp_path: Path, ending: str, recursive: bool
+) -> None:
+    (tmp_path / "last.conf").write_text("no newline at end", encoding="utf-8")
+    text = f"@include last.conf{ending}end-of-site{ending}"
+
+    result = expand_includes(text, base_dir=tmp_path, recursive=recursive)
+
+    assert result == f"no newline at end{ending}end-of-site{ending}"
+
+
+def test_expand_includes_adds_no_line_ending_the_directive_lacked(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "last.conf").write_text("no newline at end", encoding="utf-8")
+    (tmp_path / "crlf.conf").write_bytes(b"crlf\r\n")
+    (tmp_path / "empty.conf").write_text("", encoding="utf-8")
+
+    # A directive on a last line that has no ending, a file that ends with its
+    # own line ending, and an empty file are all inserted unchanged.
+    assert expand_includes("@include last.conf", base_dir=tmp_path) == (
+        "no newline at end"
+    )
+    assert expand_includes("@include crlf.conf\nx\n", base_dir=tmp_path) == (
+        "crlf\r\nx\n"
+    )
+    assert expand_includes("a\n@include empty.conf\nb\n", base_dir=tmp_path) == (
+        "a\nb\n"
+    )
+
+
 def test_expand_includes_zero_depth_inserts_direct_file_only(tmp_path: Path) -> None:
     (tmp_path / "outer.conf").write_text(
         "outer\n@include inner.conf\n",
@@ -86,6 +149,21 @@ def test_remove_triple_quoted_spans() -> None:
     assert remove_triple_quoted(text) == "before  after\nkeep\n"
 
 
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"])
+def test_remove_triple_quoted_spans_with_every_line_ending(ending: str) -> None:
+    text = "keep\na \"\"\"x\ny\"\"\" b\n'''note\nmore'''\nend\n"
+    expected = "keep\na  b\nend\n"
+
+    result = remove_triple_quoted(text.replace("\n", ending))
+
+    assert result == expected.replace("\n", ending)
+
+
+def test_remove_triple_quoted_keeps_mixed_line_endings_outside_spans() -> None:
+    text = "one\r\ntwo '''x\r\ny\rz''' three\rfour\n"
+    assert remove_triple_quoted(text) == "one\r\ntwo  three\rfour\n"
+
+
 def test_normalize_lines_and_blank_lines() -> None:
     text = "  show version  \n   \n\n  show clock\n"
     assert normalize_text(text) == "show version\nshow clock\n"
@@ -99,6 +177,18 @@ def test_whitespace_normalizers_preserve_quoted_content() -> None:
     expected = "set description='WAN   Link' next\n"
     assert normalize_spaces_outside_quotes(text) == expected
     assert normalize(text) == expected
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"])
+def test_whitespace_safe_quotes_stop_at_every_line_ending(ending: str) -> None:
+    # A quote never closes on a later line, even after a backslash, and a
+    # straight single quote at the start of a line can open a quoted region.
+    text = 'say "hi\nnext  line  "\nask "x\\\nnext  line  "\n\'a  b\'\n'
+    expected = 'say "hi\nnext line "\nask "x\\\nnext line "\n\'a  b\'\n'
+
+    result = normalize(text.replace("\n", ending))
+
+    assert result == expected.replace("\n", ending)
 
 
 def test_variable_substitution_is_case_insensitive() -> None:

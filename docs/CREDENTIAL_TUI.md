@@ -195,15 +195,17 @@ file. Anything else still holding a copy of the old key stops working, so
 coordinate with any host that reads a copy of the store. If the rotation is
 interrupted, the new key is kept beside the old one as `<key_file>.rotating`.
 See [SQLITE_CREDENTIALS.md](SQLITE_CREDENTIALS.md#rotate_key) for recovery.
-Rotation is refused when the key comes from `AXLIB_SQLITE_KEY` or
-`AXLIB_CREDENTIAL_FILE_KEY`, because axlib cannot change the caller's
-environment.
+Before asking for confirmation, `k` makes the same checks as the rotation
+itself and shows the reason in red if one fails: the key comes from
+`AXLIB_SQLITE_KEY` or `AXLIB_CREDENTIAL_FILE_KEY` (axlib cannot change the
+caller's environment), no key file is configured, or a `<key_file>.rotating`
+file is left from an interrupted rotation (recover first, as linked above).
 
 ## Safety features
 
 - **No values on screen.** Tables and messages show field names only. Password
-  boxes show dots. They are emptied when a form is saved, and a cancelled form
-  is discarded together with its boxes.
+  boxes show dots. They are emptied whenever a form closes: when you save it,
+  press **Cancel**, or press `Esc`.
 - **No clipboard copies.** Copy and cut are disabled in password boxes. (Over
   SSH, Textual's clipboard support would otherwise send the text to your
   desktop clipboard.)
@@ -248,6 +250,7 @@ Messages that stop the manager from starting are printed after
 | `needs an interactive terminal` | Run it in a terminal; over SSH use `ssh -t`. For scripts use `axlib credential-db` / `axlib credential-file`. |
 | `needs the optional 'tui' extra` | `uv add 'axlib[tui]'`, or on a host set up with `install.sh`, ask the administrator to run it with `--with-tui`. |
 | `Credential configuration file does not exist` | The path given with `--config` or in `AXLIB_CONFIG_FILE` is wrong. |
+| `Credential configuration file cannot be read` | The file exists, but you may not read it or enter its directory; the reason is in parentheses. On a host set up with `install.sh`, `id` must list the group that owns `/etc/axlib`. |
 | `No SQLite store is configured` | Add a `[sqlite]` (or `[credential_file]`) section to the TOML file, then pass `--config` or set `AXLIB_CONFIG_FILE`. |
 | Permission or ownership errors | Confirm you are in the configured group (default `netops`) and that the directories were created as described in [CREDENTIALS.md](CREDENTIALS.md#shared-linux-host-protection). |
 | `Timed out waiting for encrypted credential-file lock` or `database is locked` | Another operator is changing the store; press `r` to retry. |

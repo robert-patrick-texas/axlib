@@ -363,9 +363,14 @@ def _run_rotate(admin: StoreAdmin, args: argparse.Namespace, stream: TextIO) -> 
 
     Raises:
         ValueError: If ``--yes`` was not given for a real rotation.
-        CredentialError: If the new key or the store is unusable.
+        CredentialError: If the rotation would be refused, or the new key or
+            the store is unusable.
     """
-    # Reading the replacement key first validates it even during a dry run.
+    # Both paths start with the same checks, so a dry run fails with the same
+    # message and status a real rotation would (for example while the store's
+    # direct key variable is set, or a leftover <key_file>.rotating exists).
+    admin.check_key_rotation()
+    # Reading the replacement key next validates it even during a dry run.
     new_key = (
         None if args.new_key_file is None else admin.load_key_file(args.new_key_file)
     )

@@ -22,7 +22,9 @@ Either side may be a snapshot written by ``axlib parse`` or captures to parse
 now: a file, a directory, or ``-``.
 
 Exit status, as for :command:`diff`: 0 when nothing differs, 1 when something
-does, 2 when the comparison could not be made.
+does, 2 when the comparison could not be made or was incomplete because a
+command on either side failed to parse.  Skipped commands (no template,
+filtered output, a binary file) do not change it.
 
 Dependencies:
     Python standard library to compare snapshots; ``textfsm`` when a side is
@@ -48,15 +50,17 @@ import json
 import re
 import sys
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from .capture import add_capture_arguments, read_capture
-from .errors import ParseError
+from .errors import ParseError, SnapshotFormatError
 from .normalize import Record, natural_key
 from .snapshot import (
+    VERBOSE_HELP,
     ParsedCommand,
+    Problem,
     Snapshot,
     load_snapshot,
     parse_paths,
@@ -177,10 +181,34 @@ class SnapshotDiff:
     Attributes:
         commands: Every command compared, sorted by device and command.
         notes: Warnings, such as a command captured twice for one device.
+        before_failures: Commands in BEFORE that failed to parse, so they
+            could not be compared.
+        after_failures: The same for AFTER.
     """
 
     commands: tuple[CommandDiff, ...]
     notes: tuple[str, ...] = ()
+    before_failures: tuple[Problem, ...] = ()
+    after_failures: tuple[Problem, ...] = ()
+
+    @property
+    def failures(self) -> tuple[Problem, ...]:
+        """Return the commands of either side that failed to parse.
+
+        A command that failed on one side is listed as ``only-before`` or
+        ``only-after``, and one that failed on both sides is not listed, so
+        a comparison with failures is incomplete.
+
+        Args:
+            None: Uses the comparison's failures.
+
+        Returns:
+            tuple[Problem, ...]: BEFORE's failures, then AFTER's.
+
+        Raises:
+            None: Only tuple joining is performed.
+        """
+        return self.before_failures + self.after_failures
 
     @property
     def differences(self) -> tuple[CommandDiff, ...]:
@@ -204,8 +232,9 @@ class SnapshotDiff:
             None: Uses the comparison's own fields.
 
         Returns:
-            dict[str, Any]: ``commands``, ``notes``, and a ``summary`` of
-                counts per status.
+            dict[str, Any]: ``commands``; ``failures``, each with the
+                ``side`` it came from; ``notes``; and a ``summary`` of counts
+                per status plus ``failed``.
 
         Raises:
             None: Only dictionary building is performed.
@@ -213,9 +242,19 @@ class SnapshotDiff:
         summary = dict.fromkeys(("same", "changed", "only-before", "only-after"), 0)
         for item in self.commands:
             summary[item.status] += 1
+        summary["failed"] = len(self.failures)
+        failures = [
+            {"side": side, **asdict(problem)}
+            for side, problems in (
+                ("before", self.before_failures),
+                ("after", self.after_failures),
+            )
+            for problem in problems
+        ]
         return {
             "summary": summary,
             "commands": [item.to_dict() for item in self.commands],
+            "failures": failures,
             "notes": list(self.notes),
         }
 
@@ -349,7 +388,8 @@ def compare(
         ignore (Collection[str]): Fields to leave out of the comparison.
 
     Returns:
-        SnapshotDiff: Every command compared, and notes.
+        SnapshotDiff: Every command compared, notes, and each side's
+            failures (commands that failed to parse and so were not compared).
 
     Raises:
         TypeError: If a value cannot be converted to JSON.
@@ -378,7 +418,7 @@ def compare(
             changes = compare_records(old[identity], new[identity], ignore=ignore)
             status = "changed" if changes else "same"
             commands.append(CommandDiff(device, command, status, changes))
-    return SnapshotDiff(tuple(commands), tuple(notes))
+    return SnapshotDiff(tuple(commands), tuple(notes), before.failures, after.failures)
 
 
 def _show(value: Any) -> str:
@@ -421,7 +461,8 @@ def render_text(diff: SnapshotDiff) -> str:
 
     Returns:
         str: ``-`` removed, ``+`` added, and ``~`` changed records under a
-            ``device: command`` heading per command, then a summary line.
+            ``device: command`` heading per command, then a summary line that
+            also counts the commands that failed to parse.
 
     Raises:
         None: Only string formatting is performed.
@@ -440,14 +481,19 @@ def render_text(diff: SnapshotDiff) -> str:
             )
     counts = diff.to_dict()["summary"]
     total = len(diff.commands)
-    if diff.differences:
-        lines.append(
-            f"{total} commands compared: {counts['changed']} changed, "
-            f"{counts['only-before']} only before, {counts['only-after']} only "
-            f"after, {counts['same']} unchanged"
-        )
-    else:
+    if not diff.differences and not diff.failures:
         lines.append(f"No differences in {total} commands.")
+        return "\n".join(lines) + "\n"
+    summary = (
+        f"{total} commands compared: {counts['changed']} changed, "
+        f"{counts['only-before']} only before, {counts['only-after']} only "
+        f"after, {counts['same']} unchanged"
+    )
+    # "No differences" would be a false all-clear when commands were never
+    # compared, so failures always get the full summary and their own count.
+    if diff.failures:
+        summary += f"; {counts['failed']} failed to parse and could not be compared"
+    lines.append(summary)
     return "\n".join(lines) + "\n"
 
 
@@ -469,7 +515,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "record, ignoring the order devices list them in.",
         epilog="BEFORE and AFTER are each a snapshot written by 'axlib parse', a "
         "capture file, a directory of captures, or '-'. Exit status: 0 no "
-        "differences, 1 differences, 2 trouble.",
+        "differences, 1 differences, 2 trouble, including a command on either "
+        "side that failed to parse.",
     )
     parser.add_argument("before", metavar="BEFORE")
     parser.add_argument("after", metavar="AFTER")
@@ -483,12 +530,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Leave FIELD out of the comparison. Repeatable.",
     )
     parser.add_argument("--json", action="store_true", help="Print JSON.")
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="List every command skipped for lack of a template.",
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help=VERBOSE_HELP)
     return parser
 
 
@@ -508,8 +550,10 @@ def _load_side(
         Snapshot: The side's snapshot.
 
     Raises:
-        ParseError: If the snapshot is damaged, settings are invalid, no
-            platform is known, or TextFSM is missing.
+        SnapshotFormatError: If the snapshot is damaged or not valid JSON;
+            the message starts with ``given``.
+        ParseError: If settings are invalid, no platform is known, or
+            TextFSM is missing.
         OSError: If a file cannot be read.
         LookupError: If the encoding name is unknown.
         ValueError: If a file is binary or ``--marker`` is invalid.
@@ -525,7 +569,11 @@ def _load_side(
         text = read_capture(path, encoding=args.encoding)
         if text is None:
             raise ValueError(f"{given} is a binary file")
-        snapshot = load_snapshot(text)
+        try:
+            snapshot = load_snapshot(text)
+        except SnapshotFormatError as exc:
+            # Name the file: the message alone does not say which side it is.
+            raise SnapshotFormatError(f"{given}: {exc}") from exc
         if snapshot is not None:
             return snapshot
         if not catalog:
@@ -553,7 +601,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     Returns:
         int: ``0`` when nothing differs, ``1`` when something does, ``2``
-            when the comparison could not be made.
+            when the comparison could not be made or a command on either
+            side failed to parse.
 
     Raises:
         None: Expected errors are printed and turned into the exit status.
@@ -581,6 +630,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(diff.to_dict(), indent=2))
     else:
         sys.stdout.write(render_text(diff))
+    # As for diff(1), 2 means trouble: a failure leaves the comparison
+    # incomplete, which outranks any differences that were found.
+    if diff.failures:
+        return 2
     return 1 if diff.differences else 0
 
 

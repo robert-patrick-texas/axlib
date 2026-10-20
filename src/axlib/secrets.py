@@ -43,7 +43,8 @@ import sys
 from collections.abc import Mapping, Sequence
 from typing import TextIO
 
-from axlib import __version__, config
+from axlib import __version__
+from axlib.credentials.exceptions import CredentialError
 from axlib.credentials.manager import (
     lookup_values,
     merge_missing,
@@ -53,6 +54,13 @@ from axlib.credentials.manager import (
 # ``__version__`` is imported from the package (see above) rather than written
 # here, so older scripts that read ``axlib.secrets.__version__`` always see the
 # current release.
+#
+# ``axlib.config`` is deliberately *not* imported here.  Importing it reads the
+# TOML configuration file, so a missing or unreadable file would make
+# ``import axlib.secrets`` itself fail with a traceback, before main() could
+# report it.  The functions below import it on first use instead; Python
+# caches the module, so later calls (and monkeypatched attributes) see the
+# same object.
 
 __all__ = [
     "__version__",
@@ -100,8 +108,11 @@ def _configured_shared_service() -> str | None:
             been enabled by the deployment.
 
     Raises:
-        None: Blank text is treated as an unset optional value.
+        CredentialConfigurationError: If the configuration file cannot be
+            loaded on first use.  Blank text is treated as an unset value.
     """
+    from axlib import config  # first use loads settings; see the imports note
+
     value = config.shared_service
     return value if value is not None and str(value).strip() else None
 
@@ -124,10 +135,13 @@ def readkeyring(**values: str | None) -> dict[str, str | None]:
             in.  Missing entries remain ``None`` for compatibility.
 
     Raises:
-        CredentialConfigurationError: Invalid legacy config values may be raised
-            while converting them to modern settings.  Backend lookup errors are
-            reported to standard error and treated as misses.
+        CredentialConfigurationError: If the configuration file cannot be
+            loaded, or invalid legacy config values are found while converting
+            them to modern settings.  Backend lookup errors are reported to
+            standard error and treated as misses.
     """
+    from axlib import config  # first use loads settings; see the imports note
+
     requested = dict(values)
     service = requested.pop("service", "default")
     return lookup_values(
@@ -379,22 +393,33 @@ def main(
             defaults to the current standard output stream.
 
     Returns:
-        int: ``0`` when required login fields are present, otherwise ``1``.
+        int: ``0`` when the required fields are present, ``1`` when any is
+            missing, or ``2`` when the check could not run, for example because
+            the configuration file is missing or cannot be read.
 
     Raises:
-        CredentialConfigurationError: Invalid local settings are allowed to
-            surface so operators receive a clear startup failure.
+        SystemExit: If :mod:`argparse` rejects the command line.
     """
     args = build_arg_parser().parse_args(argv)
     output_stream = sys.stdout if stream is None else stream
+    lookup = getkeys if args.credential_type == "network" else getinfoblox
+    try:
+        values = lookup(args.service)
+    except CredentialError as exc:
+        # One line in the same "program: message" form as the other credential
+        # commands, instead of a traceback.  Status 2 keeps "could not check"
+        # apart from 1, "a field is missing".
+        print(f"axlib credentials: {exc}", file=sys.stderr)
+        return 2
+
     if args.credential_type == "network":
-        netuser, netpass, netenable = getkeys(args.service)
+        netuser, netpass, netenable = values
         print(f"netuser={_presence(netuser)}", file=output_stream)
         print(f"netpass={_presence(netpass)}", file=output_stream)
         print(f"netenable={_presence(netenable)}", file=output_stream)
         return 0 if netuser and netpass else 1
 
-    ibgrid, ibuser, ibpass = getinfoblox(args.service)
+    ibgrid, ibuser, ibpass = values
     print(f"ibgrid={_presence(ibgrid)}", file=output_stream)
     print(f"ibuser={_presence(ibuser)}", file=output_stream)
     print(f"ibpass={_presence(ibpass)}", file=output_stream)

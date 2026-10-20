@@ -174,7 +174,7 @@ Every record is decrypted with the currently configured key and re-encrypted wit
 - If `axlib credential-db list` still works, the transaction did not commit and the database is unchanged. Remove the staging file and rotate again.
 - If it fails with "key validation failed", the database already needs the new key. Move the staging file over the key file to finish the rotation.
 
-`rotate_key()` refuses to start when that staging file already exists, so an interrupted rotation cannot be silently retried over an unresolved one. A wrong-length key, a set `AXLIB_SQLITE_KEY` (even when `key_file` is also configured), a missing `key_file`, or a leftover staging file raises `CredentialConfigurationError`.
+`rotate_key()` refuses to start when that staging file already exists, so an interrupted rotation cannot be silently retried over an unresolved one. A wrong-length key, a set `AXLIB_SQLITE_KEY` (even when `key_file` is also configured), a missing `key_file`, or a leftover staging file raises `CredentialConfigurationError`. `store.check_key_rotation()` makes the last three checks without changing anything and returns the key file and staging file paths.
 
 From the CLI:
 
@@ -194,7 +194,7 @@ status=rotated
 rotated=1
 ```
 
-Use `--new-key-file PATH` instead of `--generate-key` to rotate to a key produced by another process (for example a KMS export). The file must hold the key as URL-safe Base64 text. The key it holds is written to the configured key file (as URL-safe Base64, so the text may not match byte for byte) and the file itself is left in place, so remove it once the rotation is verified. `--dry-run` checks the `--new-key-file` and prints the record count without changing anything; it does not check for a set `AXLIB_SQLITE_KEY` or a leftover staging file. `--yes` is required to proceed because every record is re-encrypted; without it the command exits with status 2.
+Use `--new-key-file PATH` instead of `--generate-key` to rotate to a key produced by another process (for example a KMS export). The file must hold the key as URL-safe Base64 text. The key it holds is written to the configured key file (as URL-safe Base64, so the text may not match byte for byte) and the file itself is left in place, so remove it once the rotation is verified. `--dry-run` makes the same refusal checks as a real rotation (a set `AXLIB_SQLITE_KEY`, no `key_file`, or a leftover staging file) and fails with the same message and exit status. It also checks the `--new-key-file`, then prints the record count without changing anything. `--yes` is required to proceed because every record is re-encrypted; without it the command exits with status 2.
 
 ## Shared and private permissions
 
@@ -283,6 +283,6 @@ The exit status is:
 
 - `0` on success, including a dry run.
 - `1` when the store reports an error (the message goes to standard error, prefixed `axlib-credential-db:`), when `delete` finds no such service (`status=not-found`), or when a change was saved but the Redis cache could not be cleared (`cache=stale`).
-- `2` for a command-line error, such as an unknown option, an invalid service or field name, a field the profile does not allow, a missing required field, or a missing `--yes`.
+- `2` for a command-line error, such as an unknown option, an invalid service or field name, a field the profile does not allow, a missing required field, a missing `--yes`, or input that ends before a `--prompt` value is entered.
 
 The CLI uses the same `init/add/update/delete/list/rotate-key` workflow as `axlib credential-file`. Unlike `CredentialFileStore`, the SQLite store has no `get_password()`, `set_password()`, or `delete_password()` methods; use `read()`, `write()`, and `delete()`.

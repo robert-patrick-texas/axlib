@@ -911,11 +911,13 @@ class CredentialAdminApp(App[None]):
         status = self.store_status
         if status is None:
             return
-        if status.key_source != "file":
-            self._show_error(
-                f"Key rotation needs a key file, but this store's key comes from "
-                f"{status.kind.key_env_var}."
-            )
+        try:
+            # The checks the rotation itself and `rotate-key --dry-run` make
+            # (a key from the environment, no key file, a leftover staging
+            # file), so the operator is never asked to confirm a refusal.
+            self.admin.check_key_rotation()
+        except CredentialError as exc:
+            self._show_error(str(exc))
             return
         key_file = escape(str(status.key_file))
         message = (

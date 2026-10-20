@@ -17,7 +17,7 @@ from axlib.__main__ import main as axlib_main
 from axlib.parse import TemplateCatalog, compare, parse_paths
 from axlib.parse.diff import RecordChange, compare_records, main, render_text
 from axlib.parse.settings import TemplateSource
-from axlib.parse.snapshot import ParsedCommand, Snapshot, render
+from axlib.parse.snapshot import ParsedCommand, Problem, Snapshot, render
 
 pytestmark = pytest.mark.usefixtures("clean_parse_environment")
 
@@ -209,6 +209,7 @@ def test_commands_on_one_side_and_duplicates() -> None:
         "changed": 0,
         "only-before": 1,
         "only-after": 1,
+        "failed": 0,
     }
 
 
@@ -283,3 +284,121 @@ def test_diff_command_rejects_binary_files(
 
     assert main([str(binary), str(binary)]) == 2
     assert "is a binary file" in capsys.readouterr().err
+
+
+def write_failing_capture(path: Path, line: str = "not a status line") -> Path:
+    """Write a capture whose one command the ntc template rejects."""
+    path.write_text(f"sw1#show int status\n{line}\n", encoding="utf-8")
+    return path
+
+
+def test_diff_command_exits_2_when_every_command_failed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    before = write_failing_capture(tmp_path / "before.log")
+    after = write_failing_capture(tmp_path / "after.log", "also not a status line")
+
+    status = main(["-p", "cisco_ios", str(before), str(after)])
+    output = capsys.readouterr()
+
+    # Nothing was compared, so "No differences" would be a false all-clear.
+    assert status == 2
+    assert output.out == (
+        "0 commands compared: 0 changed, 0 only before, 0 only after, "
+        "0 unchanged; 2 failed to parse and could not be compared\n"
+    )
+    assert "axlib parse diff (before): failed: before.log:1 sw1" in output.err
+    assert "axlib parse diff (after): failed: after.log:1 sw1" in output.err
+
+
+def test_diff_command_reports_differences_and_failures(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    after = tmp_path / "after"
+    after.mkdir()
+    for name in ("sw1.log", "sw2.txt"):
+        (after / name).write_text(
+            (EXAMPLES / "after" / name).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    write_failing_capture(after / "sw3.log")
+
+    status = main([*OPTIONS, str(EXAMPLES / "before"), str(after)])
+    output = capsys.readouterr()
+
+    assert status == 2
+    assert "~ port=GigabitEthernet1/0/5" in output.out
+    assert output.out.endswith(
+        "9 commands compared: 7 changed, 0 only before, 0 only after, "
+        "2 unchanged; 1 failed to parse and could not be compared\n"
+    )
+    assert "axlib parse diff (after): failed: sw3.log:1 sw1" in output.err
+
+
+def test_diff_command_json_lists_failures_by_side(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    good = tmp_path / "good.log"
+    good.write_text("sw1#show ip pim neighbor\n", encoding="utf-8")
+    bad = write_failing_capture(tmp_path / "bad.log")
+
+    status = main([*OPTIONS, "--json", str(good), str(bad)])
+    report = json.loads(capsys.readouterr().out)
+
+    assert status == 2
+    assert report["summary"] == {
+        "same": 0,
+        "changed": 0,
+        "only-before": 1,
+        "only-after": 0,
+        "failed": 1,
+    }
+    assert [(item["side"], item["source"]) for item in report["failures"]] == [
+        ("after", "bad.log")
+    ]
+
+
+def test_skipped_commands_do_not_change_the_status(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    capture = tmp_path / "skipped.log"
+    capture.write_text(
+        "sw1#terminal length 0\nsw1#show running-config | include hostname\n"
+        "hostname sw1\n",
+        encoding="utf-8",
+    )
+
+    status = main([*OPTIONS, str(capture), str(capture)])
+    output = capsys.readouterr()
+
+    assert status == 0
+    assert output.out == "No differences in 0 commands.\n"
+    assert "skipped 2 command(s)" in output.err
+
+
+def test_compare_carries_each_side_failures() -> None:
+    failed = Problem("failed", "State Error raised", "show x", "sw1", "sw1.log", 3)
+    skipped = Problem("skipped", "binary file", source="image.png")
+
+    diff = compare(Snapshot(problems=(failed, skipped)), Snapshot(problems=(failed,)))
+
+    assert diff.before_failures == (failed,)
+    assert diff.after_failures == (failed,)
+    assert diff.failures == (failed, failed)
+    assert compare(Snapshot(problems=(skipped,)), Snapshot()).failures == ()
+
+
+def test_diff_command_rejects_a_truncated_snapshot(
+    tmp_path: Path,
+    snapshots: tuple[Snapshot, Snapshot],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    truncated = tmp_path / "trunc.json"
+    truncated.write_text(render(snapshots[0])[:3000], encoding="utf-8")
+
+    status = main([*OPTIONS, str(truncated), str(EXAMPLES / "before")])
+    output = capsys.readouterr()
+
+    # Read as a capture, it would have looked like nine commands "only after".
+    assert status == 2
+    assert output.out == ""
+    assert f"axlib parse diff: {truncated}: not valid JSON: " in output.err

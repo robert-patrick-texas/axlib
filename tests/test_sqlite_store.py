@@ -8,6 +8,7 @@ from __future__ import annotations
 import grp
 import os
 import sqlite3
+from collections.abc import Callable
 from contextlib import closing
 from pathlib import Path
 
@@ -412,3 +413,71 @@ def test_sqlite_store_rotate_key_blocks_when_staging_file_remains(
     staged.write_text("leftover-from-an-interrupted-rotation\n", encoding="ascii")
     with pytest.raises(CredentialConfigurationError, match="staging file"):
         store.rotate_key(os.urandom(32))
+
+
+def _store_with_one_record(tmp_path: Path) -> tuple[SQLiteCredentialStore, Path]:
+    """Return an initialized store holding ``ops``, and its key-file path."""
+    settings = _settings(tmp_path)
+    assert settings.sqlite_key_file is not None
+    store = SQLiteCredentialStore(settings)
+    store.initialize()
+    store.create("ops", {"netuser": "ops", "netpass": "pw"})
+    return store, settings.sqlite_key_file
+
+
+def _replace_with_symlink(key_file: Path) -> str:
+    """Move the key aside and leave a symlink to it at ``key_file``."""
+    real_key = key_file.with_name("real.key")
+    key_file.rename(real_key)
+    key_file.symlink_to(real_key)
+    return f"SQLite encryption key file must not be a symlink: {key_file}"
+
+
+def _replace_with_directory(key_file: Path) -> str:
+    """Replace the key file with a directory of the same name."""
+    key_file.unlink()
+    key_file.mkdir()
+    return f"SQLite encryption key file is not a regular file: {key_file}"
+
+
+@pytest.mark.parametrize(
+    "break_key_file", [_replace_with_symlink, _replace_with_directory]
+)
+def test_key_file_problems_are_reported_as_themselves(
+    tmp_path: Path, break_key_file: Callable[[Path], str]
+) -> None:
+    # The key check used to wrap these errors, so every operation reported
+    # "key-check metadata is invalid" instead of what was wrong.  The
+    # expected messages also start with "SQLite", not "Sqlite".
+    store, key_file = _store_with_one_record(tmp_path)
+    expected = break_key_file(key_file)
+    operations: list[Callable[[], object]] = [
+        store.list_records,
+        lambda: store.read("ops", ["netuser"]),
+        lambda: store.create("lab", {"netuser": "lab", "netpass": "pw"}),
+    ]
+
+    for operation in operations:
+        with pytest.raises(CredentialBackendError) as caught:
+            operation()
+        assert str(caught.value) == expected
+
+
+def test_initialize_rejects_unknown_group_without_creating_a_directory(
+    tmp_path: Path,
+) -> None:
+    # With the key in AXLIB_SQLITE_KEY, nothing else checks the group before
+    # the database's parent directory would be created.
+    key = generate_sqlite_key_file(tmp_path / "unused.key", group=_current_group())
+    parent = tmp_path / "new-directory"
+    settings = CredentialSettings(
+        sqlite_enabled=True,
+        sqlite_database=parent / "credentials.db",
+        sqlite_key=key,
+        sqlite_group="axlib-group-that-must-not-exist",
+    )
+
+    with pytest.raises(CredentialConfigurationError, match="group does not exist"):
+        SQLiteCredentialStore(settings).initialize()
+
+    assert not parent.exists()
