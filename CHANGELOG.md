@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.7 - 2026-10-20
 
 - Added `axlib md2html` (also `axlib-md2html` and `python -m axlib.md2html`), which converts Markdown files to HTML pages. One file becomes a page beside it (or `-o FILE`, or standard output); several files or a folder (`-r` for subfolders) become a small site, beside the Markdown or under `-o DIR`, and standard input becomes one page. Markdown is read as GitHub reads it: CommonMark plus tables, strikethrough, bare URLs as links, task-list check boxes, and footnotes. Headings get GitHub's anchors, so `FILE.md#section` links keep working.
 - Every page has a sidebar listing every page converted together with the current page's `##` and `###` sections, an optional top bar (`--site-name`, repeatable `--link LABEL=URL`), and, when converted from a file, a footer naming its Markdown source (linked with `--source-url`). Pages need no JavaScript or internet access, follow the light or dark system setting, put the text first on a phone, and leave navigation out when printed. `--index FILE` writes `FILE` as `index.html`; `--fragment` writes only the converted HTML; `--escape-html` shows HTML in untrusted Markdown as text.

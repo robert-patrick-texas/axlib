@@ -2,6 +2,72 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.7
+
+### Overview
+
+This release adds `axlib md2html`, which turns Markdown runbooks, change plans, and notes into HTML pages, and uses it to publish the documentation as a website: <https://robert-patrick-texas.github.io/axlib/>. Every guide was checked against the code and corrected, and the bugs found along the way are fixed. One output changes on purpose: `axlib netenv-set` no longer prints `unset NETENABLE` unless asked to (see Compatibility below).
+
+### Markdown to HTML
+
+```bash
+axlib md2html change-plan.md                  # writes change-plan.html beside it
+axlib md2html -r runbooks -o site --index runbooks/README.md --site-name "NOC runbooks"
+```
+
+- **What it reads:** Markdown as GitHub reads it: tables, task-list check boxes, footnotes, strikethrough, and bare URLs as links. Headings get GitHub's anchors, so `INSTALL.md#offline-hosts` links keep working.
+- **The pages:** a sidebar down the left lists every page converted together and the current page's sections, and an optional bar at the top holds the site name and links such as the project's repository (`--site-name`, `--link LABEL=URL`). Pages need no JavaScript, web server, or internet access, follow the light or dark system setting, and put the text first on a phone.
+- **Links:** links between the Markdown files are rewritten to the HTML pages. Broken links, missing files, and `#section` links to headings that do not exist are reported as `file:line: message`, and `--strict` makes them fail the command. Linked images are copied next to the pages; hidden files are never copied.
+- **Python:** `markdown_to_html()` for one string, `convert_paths()` for files and folders.
+- **Install:** `uv add 'axlib[markdown]'`, or `install.sh --with-markdown` on a shared host (under 1 MB of pure Python).
+
+`docs/MARKDOWN.md` is the guide.
+
+### Documentation website
+
+The guides are now published at <https://robert-patrick-texas.github.io/axlib/>, with the GitHub repository and the PyPI project linked at the top of every page and an index of pages and sections down the left. `make docs` builds the same site locally, and `.github/workflows/docs.yml` publishes it from the tag of every GitHub release, so the website always describes the latest release.
+
+Every guide was checked against the code, and checked again after the corrections. Among the corrections: the recovery advice after an interrupted `rotate-key`, which could have deleted the only working key; when `ax.getkeys()` falls back to the shared account; and how `install.sh --no-store` behaves. New material includes a reference of every `axlib.toml` setting and `AXLIB_*` variable, the Redis cache, both stores' command lines, the full Python APIs, and a table of every command in the README.
+
+### Fixes
+
+- **Credentials:** a key file or database named by a relative path in `axlib.toml` that is a symlink is now refused, like any other symlink. `axlib credentials` reports a missing configuration in one line instead of a traceback, and a configuration file a user cannot read is reported as `cannot be read (Permission denied)` rather than `does not exist`. SQLite key-file problems are reported as themselves. `rotate-key --dry-run` and the TUI make the same checks as the rotation itself. The TUI empties password boxes whenever a form closes.
+- **`install.sh`:** `--no-store` no longer turns the SQLite store on in a new `axlib.toml`. `current` moves to a new release only after it is installed, and a failed install restores the project and removes the unfinished release. A failing store check at the end is a warning, not a failed install. Every `AXLIB_*` variable in root's environment is ignored while it runs.
+- **`axlib parse`:** commands typed in a configuration mode with `do` are parsed. `axlib parse diff` exits 2 when a command failed to parse, and a damaged snapshot is an error instead of an empty capture.
+- **`axlib radius`:** end of input at a prompt is explained, and `--password-stdin` with no input no longer sends an empty password.
+- **Text filters:** `triple-quotes` handles CRLF and CR-only text; `include` keeps an included file without a final newline on its own line and blocks a cycle back to the input file; `include` and `comments` report undecodable input with status 1; `variables` keeps the last of repeated assignments.
+
+### Compatibility
+
+- **`axlib netenv-set` output:** for a record without an enable secret, it no longer prints `unset NETENABLE`; its output is only `export` lines. `--unset` brings the line back. The `netenv-set` shell function in `examples/netenv/netenv.sh`, installed as `/etc/profile.d/axlib-netenv.sh` by `--with-netenv`, always passes `--unset`, so login shells behave as before. A script that runs `eval "$(axlib netenv-set)"` itself keeps an existing `NETENABLE` unless it adds `--unset`.
+- **Exit statuses:** `axlib parse diff` exits 2, not 0 or 1, when a command failed to parse. `axlib credentials` exits 2 when it cannot run at all, keeping 1 for a missing field. `include` and `comments` exit 1, not 2, for undecodable input.
+- **`import axlib.secrets`** no longer reads the configuration file when it is imported; settings are read at the first lookup.
+- **No storage format changes.** A shared host upgrades in place with `sudo ./axlib-1.0.7/install.sh`, keeping its options; add `--with-markdown` for the converter. Rolling back to 1.0.6 as `docs/INSTALL.md` describes works; uv warns that 1.0.6 has no `markdown` extra.
+
+### Validation
+
+Validated on Python 3.14.3 and, from the built wheel, on Python 3.11.16:
+
+```text
+Ruff format and lint (all rules, including docs code): passed
+ty static type check:                                  passed
+Educational docstring audit:                           passed
+Main pytest suite:                                     453 passed
+Full suite from the built wheel, Python 3.11 and 3.14: 453 passed
+Documentation site (make docs --strict):               no broken links
+Installer in an Ubuntu 26.04 container, from the
+  release tarballs: 1.0.6 with the TUI, parsing, and
+  the login snippet upgraded to 1.0.7 (options,
+  configuration, and records kept; login snippet
+  passes --unset), netenv-set output with and without
+  --unset, --with-markdown added and the release's
+  docs built by an operator, the documented rollback
+  to 1.0.6, and the upgrade again:                     passed
+Installer failure paths (failed uv add and failed
+  build restore the previous state):                   passed
+shellcheck of install.sh, axuv, and netenv.sh:         passed
+```
+
 ## 1.0.6
 
 ### Overview
