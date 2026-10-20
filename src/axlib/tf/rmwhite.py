@@ -99,6 +99,10 @@ def normalize_spaces_outside_quotes(text: str) -> str:
 transform_text = normalize_spaces_outside_quotes
 
 
+# The command name in usage lines and error messages.
+PROGRAM = "axlib tf whitespace"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the standardized parser for whitespace normalization.
 
@@ -112,7 +116,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         argparse.ArgumentError: If common options conflict with local options.
     """
     parser = argparse.ArgumentParser(
-        description="Collapse tabs and repeated spaces outside quoted regions."
+        prog=PROGRAM,
+        description="Collapse tabs and repeated spaces outside quoted regions.",
     )
     add_text_io_arguments(parser)
     return parser
@@ -136,7 +141,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = normalize_spaces_outside_quotes(text)
         write_text(args.output, output, encoding=args.encoding)
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
-        return render_cli_error("rmwhite", exc)
+        return render_cli_error(PROGRAM, exc)
     return 0
 
 

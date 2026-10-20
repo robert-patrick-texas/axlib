@@ -109,3 +109,10 @@ def test_variable_substitution_is_case_insensitive() -> None:
         "hostname": "edge-1",
         "banner": "a=b",
     }
+
+
+def test_last_variable_assignment_wins_in_any_case() -> None:
+    values = parse_variable_assignments(["host=a", "Host=b", "host=c"])
+
+    assert values == {"host": "c"}
+    assert substitute_variables("<var>HOST</var>", values) == "c"

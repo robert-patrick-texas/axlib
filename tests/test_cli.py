@@ -104,7 +104,9 @@ VERSIONED_FILES = {
     "RELEASE_NOTES.md",
     "PKG-INFO",
 }
-SKIPPED_DIRECTORIES = {".git", ".venv", "venv", "build", "dist", "__pycache__"}
+# Generated output: site/ is the documentation `make docs` builds, whose pages
+# name the release they were built from.
+SKIPPED_DIRECTORIES = {".git", ".venv", "venv", "build", "dist", "site", "__pycache__"}
 
 
 def test_release_number_is_not_hard_coded_elsewhere() -> None:

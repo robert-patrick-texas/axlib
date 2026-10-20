@@ -77,6 +77,10 @@ def remove_triple_quoted(text: str) -> str:
 transform_text = remove_triple_quoted
 
 
+# The command name in usage lines and error messages.
+PROGRAM = "axlib tf triple-quotes"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the standardized parser for triple-quote removal.
 
@@ -90,10 +94,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         argparse.ArgumentError: If a shared option conflicts with another option.
     """
     parser = argparse.ArgumentParser(
+        prog=PROGRAM,
         description=(
             "Remove all balanced triple-quoted spans. This is a text operation, "
             "not Python-aware docstring parsing."
-        )
+        ),
     )
     add_text_io_arguments(parser)
     return parser
@@ -116,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         text = read_text(args.input, encoding=args.encoding)
         write_text(args.output, remove_triple_quoted(text), encoding=args.encoding)
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
-        return render_cli_error("rmtriple", exc)
+        return render_cli_error(PROGRAM, exc)
     return 0
 
 

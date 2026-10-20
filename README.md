@@ -2,6 +2,10 @@
 
 Axlib is an educational Python package for Network Operations staff building automation scripts. It combines pipeline-friendly text filters with reusable credential helpers that can resolve operator credentials without embedding passwords in source code.
 
+- Documentation: <https://robert-patrick-texas.github.io/axlib/>
+- Source code: <https://github.com/robert-patrick-texas/axlib>
+- Package: <https://pypi.org/project/axlib/>
+
 ## Highlights
 
 - `import axlib as ax; ax.getkeys()` remains the simple network-credential API.
@@ -19,6 +23,7 @@ Axlib is an educational Python package for Network Operations staff building aut
 - `axlib netenv-set` / `axlib netenv-clear` load `NETUSER`, `NETPASS`, and `NETENABLE` into an operator's shell at SSH login, and clear them again.
 - `axlib radius` checks a username and password against a RADIUS server, as a network device would, and reports Accept, Reject, or Challenge.
 - `axlib parse` parses show-command output with TextFSM (the ntc-templates collection plus your own `.textfsm` files), and `axlib parse diff` compares collections taken before and after a change record by record, so neighbors listed in another order or hold times that ticked down are not reported as changes.
+- `axlib md2html` converts Markdown runbooks and notes into HTML pages with a sidebar listing every page and section, and checks every link between them. This documentation site is built with it.
 
 ## Install
 
@@ -40,6 +45,12 @@ Add show-command parsing (`axlib parse`):
 uv add 'axlib[textfsm]'
 ```
 
+Add Markdown-to-HTML conversion (`axlib md2html`):
+
+```bash
+uv add 'axlib[markdown]'
+```
+
 To install axlib for every operator on a shared Linux host (a shared Python in `/opt/shared/python`, axlib in `/opt/shared/axlib`, and a ready `netops` credential store), unpack a release tarball and run its installer:
 
 ```bash
@@ -47,9 +58,9 @@ tar xzf axlib-<version>.tar.gz
 sudo ./axlib-<version>/install.sh
 ```
 
-The installer records its options in `/etc/axlib/install.env`, so the `axlib` command finds `/etc/axlib/axlib.toml` without `--config`, and upgrades need no options. Administrators add libraries such as netmiko for every script with `sudo axuv add netmiko`; `axuv` runs uv on the shared environment with the installer's settings. See `docs/INSTALL.md` for options, upgrades, rollback, and backups.
+The installer records its options in `/etc/axlib/install.env`, so the `axlib` command finds `/etc/axlib/axlib.toml` without `--config`, and upgrades need no options. `--with-tui`, `--with-textfsm`, and `--with-markdown` add the optional parts below. Administrators add libraries such as netmiko for every script with `sudo axuv add netmiko`; `axuv` runs uv on the shared environment with the installer's settings. See [docs/INSTALL.md](docs/INSTALL.md) for options, upgrades, rollback, and backups.
 
-Runtime dependencies are limited to `cryptography` and `redis`. Redis is imported only when caching is enabled. The optional `tui` extra adds `textual` and `rich`, and the optional `textfsm` extra adds `textfsm` and `ntc-templates`.
+Runtime dependencies are limited to `cryptography` and `redis`. Redis is imported only when caching is enabled. The optional `tui` extra adds `textual` and `rich`, the optional `textfsm` extra adds `textfsm` and `ntc-templates`, and the optional `markdown` extra adds `markdown-it-py`, `linkify-it-py`, and `mdit-py-plugins`.
 
 ## Existing automation API
 
@@ -87,7 +98,7 @@ uv add 'axlib[tui]'
 axlib credential-tui --config /etc/axlib/axlib.toml
 ```
 
-It lists each service's field names with notes explaining how `ax.getkeys()` will use them, and it adds, edits, and deletes records, initializes stores, and rotates keys. Credential values are never displayed. See `docs/CREDENTIAL_TUI.md`.
+It lists each service's field names and note, with advice explaining how `ax.getkeys()` will use them, and it adds, edits, and deletes records, initializes stores, and rotates keys. Credential values are never displayed. See [docs/CREDENTIAL_TUI.md](docs/CREDENTIAL_TUI.md).
 
 ## Session credentials at login
 
@@ -98,7 +109,7 @@ eval "$(axlib netenv-set)"      # export NETUSER, NETPASS, NETENABLE from $USER'
 eval "$(axlib netenv-clear)"    # unset them
 ```
 
-`examples/netenv/netenv.sh` wraps both in the `netenv-set` and `netenv-clear` shell functions and loads credentials when an interactive bash or zsh shell starts. The uv scripts `scripts/netenv-set` and `scripts/netenv-clear` run the same commands from a checkout, from any directory. Read the warnings in `docs/NETENV.md` before enabling this: exported passwords are visible to every program the shell starts.
+`examples/netenv/netenv.sh` wraps both in the `netenv-set` and `netenv-clear` shell functions and loads credentials when an interactive bash or zsh shell starts. The uv scripts `scripts/netenv-set` and `scripts/netenv-clear` run the same commands from a checkout, from any directory. Read the warnings in [docs/NETENV.md](docs/NETENV.md) before enabling this: exported passwords are visible to every program the shell starts.
 
 ## Python administration API
 
@@ -131,7 +142,7 @@ result = authenticate("192.0.2.10", "alice", password, secret)  # port=1812 by d
 print(result.reply.code_name, result.accepted)
 ```
 
-The exit status is 0 for Access-Accept, 1 for Reject or Challenge, 2 for errors, and 3 when no reply arrives. `--json` prints the full result. The module uses only the standard library and is checked against the RFC 2865 test vectors. See `docs/RADIUS.md`.
+The exit status is 0 for Access-Accept, 1 for Reject or Challenge, 2 for errors, and 3 when no reply arrives. `--json` prints the full result. The module uses only the standard library and is checked against the RFC 2865 test vectors. See [docs/RADIUS.md](docs/RADIUS.md).
 
 ## Show-command parsing
 
@@ -159,7 +170,18 @@ records = parse_output(
 )
 ```
 
-See `docs/PARSING.md`.
+See [docs/PARSING.md](docs/PARSING.md).
+
+## Markdown to HTML
+
+Turn a runbook into a page to attach to a ticket, or a folder of notes into a small site:
+
+```bash
+axlib md2html change-plan.md                  # writes change-plan.html beside it
+axlib md2html -r runbooks -o site --index runbooks/README.md --site-name "NOC runbooks"
+```
+
+The Markdown is read as GitHub reads it (tables, task lists, footnotes, and bare URLs as links), and headings get GitHub's anchors. Links between the Markdown files are rewritten to point at the HTML pages, and broken links and missing `#section` anchors are reported as `file:line: message`. Every page has a sidebar listing the pages and the current page's sections, follows the reader's light or dark setting, and needs no web server. `markdown_to_html()` and `convert_paths()` do the same from Python. See [docs/MARKDOWN.md](docs/MARKDOWN.md).
 
 ## Shared server example
 
@@ -202,19 +224,45 @@ python -m axlib tf include site.conf \
   > site.rendered.conf
 ```
 
-See `docs/TEXT_FILTERS.md` for filter semantics.
+See [docs/TEXT_FILTERS.md](docs/TEXT_FILTERS.md) for filter semantics.
+
+## Commands
+
+Every command is a subcommand of `axlib` (also `python -m axlib`), and most also have their own name and a `python -m` module. The modules in the last row run only with `python -m`:
+
+| Command | Other names | Purpose | Guide |
+| --- | --- | --- | --- |
+| `axlib version` (or `-V`, `--version`) | | Print the installed version. | |
+| `axlib credentials network`, `axlib credentials infoblox` | `python -m axlib.secrets` | Check which credential fields resolve, without printing them. | [CREDENTIALS.md](docs/CREDENTIALS.md) |
+| `axlib credential-db` | `axlib-credential-db`, `python -m axlib.credentials.sqlite_cli` | Manage the encrypted SQLite store. | [SQLITE_CREDENTIALS.md](docs/SQLITE_CREDENTIALS.md) |
+| `axlib credential-file` | `axlib-credential-file`, `python -m axlib.credentials.file_cli` | Manage the encrypted text store. | [CREDENTIAL_FILE.md](docs/CREDENTIAL_FILE.md) |
+| `axlib credential-tui` | `axlib-credential-tui`, `python -m axlib.credentials.tui` | Full-screen credential manager (`tui` extra). | [CREDENTIAL_TUI.md](docs/CREDENTIAL_TUI.md) |
+| `axlib netenv-set`, `axlib netenv-clear` | `axlib-netenv-set`, `axlib-netenv-clear`, `python -m axlib.credentials.netenv set` (or `clear`) | Load or clear `NETUSER`, `NETPASS`, and `NETENABLE` in a shell. | [NETENV.md](docs/NETENV.md) |
+| `axlib radius` | `axlib-radius`, `python -m axlib.radius` | Check a login against a RADIUS server. | [RADIUS.md](docs/RADIUS.md) |
+| `axlib parse`, `axlib parse diff`, `axlib parse templates`, `axlib parse split` | `axlib-parse`, `python -m axlib.parse` | Parse and compare show-command output (`textfsm` extra). | [PARSING.md](docs/PARSING.md) |
+| `axlib md2html` | `axlib-md2html`, `python -m axlib.md2html` | Convert Markdown to HTML pages (`markdown` extra). | [MARKDOWN.md](docs/MARKDOWN.md) |
+| `axlib tf FILTER` | `axlib-tf`, `axlib-tf-FILTER`, `python -m axlib.tf` | Text filters for pipelines. | [TEXT_FILTERS.md](docs/TEXT_FILTERS.md) |
+| | `python -m axlib.credentials.admin`, `python -m axlib.credentials.profiles` | Check every configured store; list record profiles. | [CREDENTIALS.md](docs/CREDENTIALS.md) |
+
+`install.sh` puts only `axlib` on the `PATH`; the other names are in the environment's `bin` directory.
 
 ## Documentation
 
-- `docs/INSTALL.md` — shared-host installation with `install.sh`: layout, options, upgrades, rollback, backups.
-- `docs/CREDENTIALS.md` — lookup precedence, configuration, CLI, administration API, and permissions.
-- `docs/CREDENTIAL_TUI.md` — operator guide for the optional full-screen credential manager.
-- `docs/NETENV.md` — loading credentials into SSH sessions with `netenv-set` / `netenv-clear`: setup, warnings, and troubleshooting.
-- `docs/RADIUS.md` — checking a login against a RADIUS server with `axlib radius`: options, exit status, Python API, how it works, and troubleshooting.
-- `docs/PARSING.md` — parsing show commands with `axlib parse` and comparing collections with `axlib parse diff`: capture formats, output, adding your own TextFSM templates, Python API, and troubleshooting.
-- `docs/CREDENTIAL_FILE.md` — full encrypted text-store API with examples for every method.
-- `docs/SQLITE_CREDENTIALS.md` — full SQLite API with examples for every method.
-- `docs/TEXT_FILTERS.md` — pipeline and Python text-processing examples.
-- `docs/DEVELOPMENT.md` — development and validation guidance.
+The guides below are also published as a website, <https://robert-patrick-texas.github.io/axlib/>, for each release.
 
-The source intentionally includes detailed module/function docstrings and comments explaining both what Python constructs do and why they are useful in network automation.
+- [docs/INSTALL.md](docs/INSTALL.md) — shared-host installation with `install.sh`: layout, options, upgrades, rollback, backups.
+- [docs/CREDENTIALS.md](docs/CREDENTIALS.md) — lookup precedence, configuration and every setting, the Redis cache, the CLIs, the administration API, and permissions.
+- [docs/CREDENTIAL_TUI.md](docs/CREDENTIAL_TUI.md) — operator guide for the optional full-screen credential manager.
+- [docs/NETENV.md](docs/NETENV.md) — loading credentials into SSH sessions with `netenv-set` / `netenv-clear`: setup, warnings, and troubleshooting.
+- [docs/RADIUS.md](docs/RADIUS.md) — checking a login against a RADIUS server with `axlib radius`: options, exit status, Python API, how it works, and troubleshooting.
+- [docs/PARSING.md](docs/PARSING.md) — parsing show commands with `axlib parse` and comparing collections with `axlib parse diff`: capture formats, output, adding your own TextFSM templates, Python API, and troubleshooting.
+- [docs/MARKDOWN.md](docs/MARKDOWN.md) — converting Markdown to HTML pages with `axlib md2html`: what is converted, the page layout, link checking, Python API, and publishing a site.
+- [docs/CREDENTIAL_FILE.md](docs/CREDENTIAL_FILE.md) — the encrypted text store: its file format, every Python method with an example, and its command line.
+- [docs/SQLITE_CREDENTIALS.md](docs/SQLITE_CREDENTIALS.md) — the encrypted SQLite store: its database layout, every Python method with an example, and its command line.
+- [docs/TEXT_FILTERS.md](docs/TEXT_FILTERS.md) — pipeline and Python text-processing examples.
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — development, testing, documentation, and release guidance.
+- [examples/parse/README.md](examples/parse/README.md) and [examples/text/README.md](examples/text/README.md) — sample files to try `axlib parse` and the text filters on.
+- [examples/axlib.toml.example](examples/axlib.toml.example) — a configuration file with every section.
+- [RELEASE_NOTES.md](RELEASE_NOTES.md) and [CHANGELOG.md](CHANGELOG.md) — what changed in each release.
+
+The source intentionally includes detailed module/function docstrings and comments explaining both what Python constructs do and why they are useful in network automation. The package ships type hints (`py.typed`), so editors and type checkers see every signature.

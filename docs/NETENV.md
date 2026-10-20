@@ -20,10 +20,18 @@ in the encrypted store.
 
 ## Quick start
 
+On a host set up with `install.sh`, an administrator can turn this on for every
+operator's login (see [Shell integration](#shell-integration-loading-at-login)):
+
 ```bash
-# Once, in ~/.bashrc (or ~/.zshrc):
-export AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml
-source /opt/axlib/examples/netenv/netenv.sh
+sudo ./axlib-<version>/install.sh --with-netenv
+```
+
+Without that, turn it on for yourself:
+
+```bash
+# Once, in ~/.bashrc (or ~/.zshrc), on a host set up with install.sh:
+source /opt/shared/axlib/current/examples/netenv/netenv.sh
 
 # After that, in any interactive shell:
 netenv-set            # load (runs automatically when the shell starts)
@@ -31,9 +39,13 @@ netenv-set --check    # show which fields would load, never their values
 netenv-clear          # remove NETUSER, NETPASS, NETENABLE
 ```
 
+`install.sh` already sets `AXLIB_CONFIG_FILE` and puts `axlib` on the `PATH`.
+On other hosts, see [Installation](#installation).
+
 Your record must already exist. An administrator creates it with
 `axlib credential-db add --service "$USER" ...`, or you can use
-`axlib credential-tui` (see `docs/CREDENTIALS.md` and `docs/CREDENTIAL_TUI.md`).
+`axlib credential-tui` if it is installed (see [CREDENTIALS.md](CREDENTIALS.md)
+and [CREDENTIAL_TUI.md](CREDENTIAL_TUI.md)).
 
 ## Why `eval`?
 
@@ -43,7 +55,7 @@ program exits. So `axlib netenv-set` does not set anything itself. It
 **prints** shell statements, and your shell runs them:
 
 ```console
-$ axlib netenv-set | cat          # only to show the format; do not do this
+$ axlib netenv-set --quiet | cat  # only to show the format; do not do this
 export NETUSER=first.last
 export NETPASS='S3cret pa$$'
 unset NETENABLE
@@ -85,11 +97,16 @@ Guarantees that follow from this design:
   standard output, and your existing variables are left exactly as they were.
 - **It will not print your password to the screen.** If standard output is a
   terminal (you typed `axlib netenv-set` without `eval`), the command refuses,
-  shows the correct usage, and exits with status 3.
+  shows the correct usage, and exits with status 3. `--check` prints no shell
+  code, so it runs on a terminal too.
 
 ## Installation
 
-There are two ways to run the commands. Both use the same code.
+There are two ways to run the commands: the installed `axlib` command, or the
+uv scripts in a development checkout. Both use the same code. The examples
+below assume a checkout in `/opt/axlib`. On a host set up with `install.sh`,
+use the installed `axlib` command; that host's copy of the release files,
+including `examples/netenv/netenv.sh`, is under `/opt/shared/axlib/current`.
 
 ### Development checkout: the uv scripts
 
@@ -114,10 +131,10 @@ export AXLIB_NETENV_SCRIPTS=/opt/axlib/scripts
 Things to know about the uv scripts:
 
 - **Call them by their real path. Do not symlink them** into `~/bin` or
-  `/usr/local/bin`. uv resolves `path = ".."` relative to the directory it was
-  called from, so a symlink points uv at the wrong place and fails with
-  `path could not be normalized`. Use `AXLIB_NETENV_SCRIPTS`, an alias, or the
-  full path instead.
+  `/usr/local/bin`. uv resolves `path = ".."` relative to the directory of the
+  path you run, so through a symlink it looks for axlib in the parent of the
+  symlink's directory and fails with an error such as `does not appear to be a
+  Python project`. Use `AXLIB_NETENV_SCRIPTS`, an alias, or the full path instead.
 - **The first run builds a cached environment** under `~/.cache/uv` (or
   `$UV_CACHE_DIR`). It can take a few seconds and needs access to the package
   index for `cryptography` and `redis`. After that, each run takes a fraction
@@ -130,8 +147,9 @@ Things to know about the uv scripts:
 
 ### Installed package: `axlib netenv-set`
 
-When axlib is installed in an environment on your `PATH` (`uv add axlib` in a
-project, then activate its `.venv`), use the subcommands:
+When axlib is installed in an environment on your `PATH` (on a host set up with
+`install.sh`, where `/usr/local/bin/axlib` is linked for everyone, or with
+`uv add axlib` in a project whose `.venv` you activate), use the subcommands:
 
 ```bash
 eval "$(axlib netenv-set)"
@@ -139,8 +157,10 @@ eval "$(axlib netenv-clear)"
 ```
 
 The same commands are also available as `axlib-netenv-set`,
-`axlib-netenv-clear`, and `python -m axlib.credentials.netenv set|clear`.
-The shell integration uses `axlib` whenever `AXLIB_NETENV_SCRIPTS` is unset.
+`axlib-netenv-clear`, and `python -m axlib.credentials.netenv set|clear`, from
+the environment's `bin` directory (`install.sh` links only `axlib` onto the
+`PATH`). The shell integration uses `axlib` whenever `AXLIB_NETENV_SCRIPTS` is
+unset.
 
 From a development checkout without activating anything:
 
@@ -154,7 +174,14 @@ eval "$(uv run --quiet --project /opt/axlib axlib netenv-set)"
 `netenv-set` and `netenv-clear` functions and, in interactive shells only,
 runs `netenv-set --quiet` once when the shell starts.
 
-For one operator, add to `~/.bashrc` or `~/.zshrc`:
+For one operator, add to `~/.bashrc` or `~/.zshrc`. On a host set up with
+`install.sh`, one line is enough:
+
+```bash
+source /opt/shared/axlib/current/examples/netenv/netenv.sh
+```
+
+With a development checkout:
 
 ```bash
 export AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml
@@ -162,13 +189,34 @@ export AXLIB_NETENV_SCRIPTS=/opt/axlib/scripts   # omit if `axlib` is on PATH
 source /opt/axlib/examples/netenv/netenv.sh
 ```
 
-For every operator on a host, install it system-wide:
+For every operator on a host set up with `install.sh`, run it with
+`--with-netenv`:
+
+```bash
+sudo ./axlib-<version>/install.sh --with-netenv
+```
+
+That installs `/etc/profile.d/axlib-netenv.sh`, a copy of the release's
+`examples/netenv/netenv.sh` that each later `install.sh` run refreshes.
+`/etc/profile.d/axlib-config.sh`, which `install.sh` always writes, is read
+before it and sets `AXLIB_CONFIG_FILE`. `--no-netenv` removes the snippet, and
+a run with neither option keeps the host's current choice (see
+[INSTALL.md](INSTALL.md)).
+
+On other hosts, install it by hand:
 
 ```bash
 sudo install -m 0644 /opt/axlib/examples/netenv/netenv.sh /etc/profile.d/axlib-netenv.sh
 # and set AXLIB_CONFIG_FILE (and AXLIB_NETENV_SCRIPTS) in /etc/profile.d before it,
 # e.g. /etc/profile.d/axlib-00-config.sh
 ```
+
+Login shells read `/etc/profile.d` through `/etc/profile`. A shell that does
+not, such as `bash` started from your prompt on many distributions, inherits
+the exported variables but not the `netenv-set` and `netenv-clear` functions;
+`source /etc/profile.d/axlib-netenv.sh` defines them there (and reloads the
+credentials). zsh reads `/etc/profile.d` only when the system's zsh startup
+files source it, so zsh users may need the one-line `~/.zshrc` setup above.
 
 Settings read by the snippet:
 
@@ -209,14 +257,41 @@ Notes on the snippet:
 | `0` | Credentials exported (or `--check` found a complete record) | Replaced |
 | `1` | No complete record (`netuser` and `netpass`) for the service | Unchanged |
 | `2` | Configuration or store error: no store enabled, missing config file, wrong key, unreadable database | Unchanged |
-| `3` | Refused because standard output is a terminal | Unchanged |
+| `3` | Refused because standard output is a terminal (never with `--check`) | Unchanged |
 
 ### `axlib netenv-clear`
 
-Prints `unset NETUSER NETPASS NETENABLE`. It has no options, never reads the
-store, and refuses to print to a terminal (exit status 3), for the same
-reason as `netenv-set`: if you ran it without `eval`, it would look like it
-worked while nothing was cleared.
+Prints `unset NETUSER NETPASS NETENABLE`. It has no options other than
+`--help`, never reads the store, and refuses to print to a terminal (exit
+status 3), for the same reason as `netenv-set`: if you ran it without `eval`,
+it would look like it worked while nothing was cleared.
+
+### Python API
+
+The commands are thin layers over functions in `axlib.credentials.netenv`,
+which you can call from your own tools:
+
+| Name | What it does |
+| --- | --- |
+| `operator_service(environ=None)` | Returns `(service, warning)`: `$USER`, or the login account when `USER` is unset, plus a warning (or `None`) when the two differ or `USER` is unset. |
+| `lookup_network_record(service, *, settings)` | Reads `netuser`, `netpass`, and `netenable` for one service, ignoring existing `NET*` variables. Returns a `NetworkLookup`. |
+| `NetworkLookup` | Has `service`, `values` (field to value or `None`; left out of `repr()`), `problems` (store warnings), `missing` (absent required fields), and `found`. |
+| `render_exports(values)` | Returns the `export`/`unset` lines that `netenv-set` prints. |
+| `render_unset()` | Returns `unset NETUSER NETPASS NETENABLE`. |
+| `set_main(argv)`, `clear_main(argv)` | Run the two commands and return their exit status. |
+
+```python
+from axlib.credentials import load_settings
+from axlib.credentials.netenv import lookup_network_record, operator_service
+
+settings = load_settings()
+service, warning = operator_service()
+result = lookup_network_record(service, settings=settings)
+print(result.service, result.found, result.missing)
+```
+
+Store warnings are also printed to standard error as they happen, as with
+`ax.getkeys()`.
 
 ## Which record is loaded
 
@@ -288,6 +363,12 @@ import axlib as ax
 
 netuser, netpass, netenable = ax.getkeys()
 ```
+
+`ax.getkeys()` still reads the store for any variable that is not set. After
+loading a record without an enable secret, `NETENABLE` is unset, so
+`ax.getkeys()` looks up `netenable` in `$USER`'s record. After
+`netenv-set --service lab-readonly`, that can pair the lab login with your own
+enable secret.
 
 Pass them to a tool that reads its own variable names, for this command
 only:
@@ -361,8 +442,8 @@ exported, it is plaintext in memory and goes wherever the environment goes.
   being down or an unreadable key. That is deliberate. `--quiet` hides only the
   success and "not found" notices.
 - **No record, no change.** When your record does not exist yet, the command
-  exits 1 and leaves the environment alone. Values you set manually stay in
-  place.
+  exits 1 (or 2 if a store also reported a problem, such as Redis being down)
+  and leaves the environment alone. Values you set manually stay in place.
 - **Redis caching**: values read from SQLite or the text file are cached in
   Redis if it is enabled, exactly as with `ax.getkeys()`. Store updates made
   through the axlib CLIs, the TUI, or `StoreAdmin` clear that cache.
@@ -371,7 +452,8 @@ exported, it is plaintext in memory and goes wherever the environment goes.
 - **No searching for a config file**: axlib never searches directories for
   `axlib.toml`. It uses `--config`, else `AXLIB_CONFIG_FILE`, else the file
   that `install.sh` recorded in `/etc/axlib/install.env`. With none of these,
-  the command reports "no credential store is enabled" and exits 2.
+  and no `AXLIB_*` variable enabling a store, the command reports "no
+  credential store is enabled" and exits 2.
 
 ## Troubleshooting
 
@@ -381,9 +463,9 @@ exported, it is plaintext in memory and goes wherever the environment goes.
 | `no credential store is enabled` | No configuration file was found, or it doesn't enable a store. On a host without `install.sh`, export `AXLIB_CONFIG_FILE` before sourcing the snippet. |
 | `Credential configuration file does not exist` | The path in `AXLIB_CONFIG_FILE` or `--config` is wrong. |
 | `a complete network record for 'x' was not found` | No record for that service, or it lacks `netuser`/`netpass`. Check `axlib credential-db list`, or ask an administrator. |
-| `... could not be read` (exit 2), preceded by a `lookup failed` line | The store can't be opened. Most often you are not in the store's group (`id` should list `netops`), the key file is wrong, or the file mode prevents reading. The line above says which. |
+| `... could not be read` (exit 2), preceded by a `lookup failed` or `Redis credential cache unavailable` line | A store can't be opened. Most often you are not in the store's group (`id` should list `netops`), the key file is wrong, or the file mode prevents reading. The line above says which. |
 | `USER='a' differs from login account 'b'` | Something changed `USER`. Unset it or use `--service`. |
-| `path could not be normalized` (from uv) | The uv script was run through a symlink. Call it by its real path or set `AXLIB_NETENV_SCRIPTS`. |
-| Nothing loads at SSH login | The shell is not interactive, `~/.bash_profile` doesn't source `~/.bashrc`, `AXLIB_NETENV_AUTOLOAD=0`, or `netenv-set --quiet` found no record. Run `netenv-set --check` to see which. |
+| `does not appear to be a Python project` (from uv) | The uv script was run through a symlink. Call it by its real path or set `AXLIB_NETENV_SCRIPTS`. |
+| Nothing loads at SSH login | The shell is not interactive, `~/.bash_profile` doesn't source `~/.bashrc`, `AXLIB_NETENV_AUTOLOAD=0`, the host was installed without `--with-netenv` and your own startup file doesn't source the snippet, or `netenv-set --quiet` found no record. Run `netenv-set --check` to see which. |
 | Tools still use an old password | Your shell holds the old value. Run `netenv-set` again in every open shell and `tmux` pane. |
 | `scp`/`sftp` hang or fail after editing `.bashrc` | Something in `.bashrc` prints output in non-interactive shells. Keep the snippet's interactive guard, and guard your own output the same way. |

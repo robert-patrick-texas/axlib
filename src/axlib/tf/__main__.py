@@ -46,7 +46,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         None: Constructing the parser does not import individual filter modules.
     """
     parser = argparse.ArgumentParser(
-        prog="python -m axlib.tf",
+        prog="axlib tf",
         description="Run an axlib streaming text filter.",
         epilog=(
             "Commands: include, comments, slash-comments, triple-quotes, lines, "

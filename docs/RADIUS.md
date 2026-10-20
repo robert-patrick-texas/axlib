@@ -42,8 +42,8 @@ The same command is available as `axlib-radius` and `python -m axlib.radius`.
 | `--nas-identifier` | `NAS-Identifier` value sent to the server (default `axlib`). Server policies sometimes match on it. |
 | `--json` | Print one JSON object instead of text. |
 
-The password comes from the first of these that is given. When none is given,
-you are prompted with echo turned off:
+The password comes from one of these options; giving two of them is an error.
+When none is given, you are prompted with echo turned off:
 
 | Password option | Use |
 | --- | --- |
@@ -101,11 +101,25 @@ done
   "attempts": 1,
   "elapsed_ms": 4.2,
   "message_authenticator": true,
-  "reply_messages": ["Welcome, alice"],
+  "reply_messages": [
+    "Welcome, alice"
+  ],
   "attributes": [
-    {"type": 80, "name": "Message-Authenticator", "value": "0x5be1..."},
-    {"type": 18, "name": "Reply-Message", "value": "Welcome, alice"},
-    {"type": 26, "name": "Vendor-Specific", "value": "vendor=9 type=1 value=shell:priv-lvl=15"}
+    {
+      "type": 80,
+      "name": "Message-Authenticator",
+      "value": "0x283b92e862ac0edf6928b9898aec964b"
+    },
+    {
+      "type": 18,
+      "name": "Reply-Message",
+      "value": "Welcome, alice"
+    },
+    {
+      "type": 26,
+      "name": "Vendor-Specific",
+      "value": "vendor=9 type=1 value=shell:priv-lvl=15"
+    }
   ]
 }
 ```
@@ -157,7 +171,12 @@ own:
   RFC 2865 section 5.2 describes.
 - `build_access_request(...)` encodes a complete request.
 - `verify_response(packet, request=..., secret=...)` checks a reply and parses
-  it.
+  it into a `RadiusReply`, or raises `RadiusError`.
+
+`main(argv)` runs the command line and returns its exit status, one of
+`EXIT_ACCEPT`, `EXIT_REJECT`, `EXIT_ERROR`, and `EXIT_NO_REPLY` (0 to 3).
+`DEFAULT_PORT`, `DEFAULT_TIMEOUT`, `DEFAULT_RETRIES`, and
+`DEFAULT_NAS_IDENTIFIER` hold the defaults shown above.
 
 ## How it works
 
@@ -170,13 +189,15 @@ own:
    `Message-Authenticator`, `User-Name`, `User-Password`, `NAS-Identifier`,
    and `NAS-IP-Address`, or `NAS-IPv6-Address` for an IPv6 server.
 3. **Password hiding.** The client picks a random 16-byte *Request
-   Authenticator*. The password is XORed with `MD5(secret + authenticator)`.
-   The secret itself never crosses the network.
+   Authenticator*. The password is padded with zero bytes to a multiple of 16.
+   Its first 16 bytes are XORed with `MD5(secret + authenticator)`, and each
+   later 16 bytes with `MD5(secret + previous hidden block)`. The secret
+   itself never crosses the network.
 4. **Reply verification.** The server signs its reply with a *Response
-   Authenticator*: `MD5(reply header + request authenticator + reply
-   attributes + secret)`. A wrong value means the reply did not come from a
-   holder of the secret. In practice, that almost always means the two sides
-   have different secrets.
+   Authenticator*: `MD5(reply code, identifier, and length + request
+   authenticator + reply attributes + secret)`. A wrong value means the
+   reply did not come from a holder of the secret. In practice, that almost
+   always means the two sides have different secrets.
 5. **Message-Authenticator.** Every request carries an HMAC-MD5 of the whole
    packet. The 2024 BlastRADIUS attack (CVE-2024-3596) forges replies to
    requests that lack one, and patched servers can be set to drop such

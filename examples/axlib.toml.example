@@ -29,16 +29,23 @@ enforce_permissions = true
 # owner = "root"
 
 # Optional plaintext cache. TLS is recommended for remote Redis endpoints.
+# The password is never read from this file: set AXLIB_REDIS_PASSWORD.
 [redis]
 enabled = false
 host = "localhost"
 port = 6379
 db = 15
+# username = "axlib"                       # Redis ACL user
 tls = false
+# TLS file paths are not resolved from this file's directory: use absolute paths.
+# ca_certs = "/etc/axlib/redis-ca.pem"     # CA bundle that verifies the server
+# certfile = "/etc/axlib/redis-client.pem" # client certificate (mutual TLS)
+# keyfile = "/etc/axlib/redis-client.key"  # its private key
+# cert_reqs = "required"                   # required (default), optional, or none
 connect_timeout = 2.0
 socket_timeout = 2.0
-cache_ttl = 900
-key_prefix = "axlib"
+cache_ttl = 900                            # seconds; 0 keeps entries until changed
+key_prefix = "axlib"                       # default "": hashes named <prefix>:<service>
 
 # axlib parse: TextFSM parsing of show-command output (uv add 'axlib[textfsm]').
 # Template directories are searched before ntc-templates; relative paths are

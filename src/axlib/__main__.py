@@ -6,14 +6,15 @@
 The package command groups text processing, credential diagnostics, AES-256-GCM
 text-file management, encrypted SQLite management, the optional full-screen
 credential manager, the shell-session credential loaders, a RADIUS login
-check, and TextFSM parsing of show-command output behind discoverable
-subcommands. Existing module commands and
+check, TextFSM parsing of show-command output, and Markdown-to-HTML
+conversion behind discoverable subcommands. Existing module commands and
 Python imports remain available, so engineers can move gradually from a shell
 pipeline to reusable Python functions.
 
 Dependencies vary by command: text filters use only the standard library,
 credential commands need the packages documented in ``docs/CREDENTIALS.md``, and
-``parse`` needs the ``textfsm`` extra (``docs/PARSING.md``).
+``parse`` needs the ``textfsm`` extra (``docs/PARSING.md``), and ``md2html`` the
+``markdown`` extra (``docs/MARKDOWN.md``).
 
 Example:
     ``python -m axlib tf variables -v hostname=edge-01 template.txt``
@@ -42,6 +43,7 @@ COMMANDS = (
     "netenv-clear",
     "radius",
     "parse",
+    "md2html",
 )
 
 
@@ -82,7 +84,7 @@ def _load_command(command: str) -> CommandMain:
     Args:
         command (str): One of ``tf``, ``credentials``, ``credential-file``,
             ``credential-db``, ``credential-tui``, ``netenv-set``,
-            ``netenv-clear``, ``radius``, or ``parse``.
+            ``netenv-clear``, ``radius``, ``parse``, or ``md2html``.
 
     Returns:
         CommandMain: Callable accepting an optional argument sequence.
@@ -127,6 +129,10 @@ def _load_command(command: str) -> CommandMain:
         return main
     if command == "parse":
         from .parse.__main__ import main
+
+        return main
+    if command == "md2html":
+        from .md2html.__main__ import main
 
         return main
     raise ValueError(f"Unsupported axlib command: {command}")

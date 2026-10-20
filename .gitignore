@@ -10,4 +10,5 @@ htmlcov/
 venv/
 build/
 dist/
+site/
 *.rotating

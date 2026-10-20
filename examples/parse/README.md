@@ -6,9 +6,12 @@ the tests in `tests/test_parse_*.py` check these files, so they stay correct.
 
 ```text
 before/sw1.log   session log with prompts: CDP, LLDP (brief and detail),
-                 show ip int br, show int status, show ip pim neighbor
-after/sw1.log    the same commands, partly abbreviated (sh cdp nei), with
-                 neighbors in another order, new hold times, and real changes
+                 show ip int br, show int status, show ip pim neighbor, and
+                 two commands that are skipped (terminal length 0, and
+                 show running-config filtered with | include)
+after/sw1.log    the same commands without the filtered one, partly
+                 abbreviated (sh cdp nei), with neighbors in another order,
+                 new hold times, and real changes
 before/sw2.txt   a script's output with bare commands and no prompts
 after/sw2.txt    the same neighbors in another order with new hold times
 templates/       cisco_ios_show_ip_pim_neighbor.textfsm, which ntc-templates

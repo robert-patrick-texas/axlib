@@ -57,6 +57,9 @@ def test_completion_matches_clitable() -> None:
     assert normalize_command("  show   lldp neighbors |  no-more ") == (
         "show lldp neighbors"
     )
+    # "do" runs an exec command from a configuration mode.
+    assert normalize_command("DO  show ip int br") == "show ip int br"
+    assert normalize_command("download-file x") == "download-file x"
 
 
 @pytest.mark.parametrize(

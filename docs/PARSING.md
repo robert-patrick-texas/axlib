@@ -74,7 +74,7 @@ A `diff -u` of the two `sw1` logs shows 110 changed lines. The report above
 shows what actually changed: the access point on Gi1/0/5 went away, the router
 uplink moved to another port, and a PIM neighbor stopped being the designated
 router. `sw2` was only reordered and its hold times changed, so it isn't
-listed. In the "after" log the commands are abbreviated (`sh cdp nei`,
+listed. In the "after" log some commands are abbreviated (`sh cdp nei`,
 `sh ip pim nei`), and they are still paired with the full commands from
 "before".
 
@@ -99,12 +99,14 @@ starts a new command when it is one of these:
 | A prompt and a command | `sw1#show cdp neighbors`, `sw1>show ver`, `sw1(config)#do show ip int br` | `sw1` |
 | A Junos prompt | `admin@mx1> show lldp neighbors` | `mx1` |
 | An IOS-XR prompt | `RP/0/RSP0/CPU0:xr1#show cdp neighbors detail` | `xr1` |
-| A bare command in column 1 | `show cdp neighbors`, `sh ip int br`, `display lldp neighbor` | the last prompt's, if any |
+| A bare `show` or `display` command (or an abbreviation such as `sh`) in column 1 | `show cdp neighbors`, `sh ip int br`, `display lldp neighbor` | the last prompt's, if any |
 | Your own `--marker` pattern | `===== sw1: show cdp neighbors =====` | the `host` group, if any |
 
 A prompt with nothing after it (`sw1#`) ends the current command. That keeps
 the prompt at the end of a session log out of the last command's output.
-Text before the first command, such as a login banner, is ignored.
+Text before the first command, such as a login banner, is ignored. Other
+lines without a prompt, such as a bare `terminal length 0`, don't start a
+command; they count as output of the command before them.
 
 These are removed from the output, because each one makes a strict template
 stop with an error:
@@ -112,8 +114,8 @@ stop with an error:
 - pager prompts (`--More--`, Junos `---(more 45%)---`) and the backspaces
   that erase them,
 - carriage returns,
-- the `Load for five secs` and `Time source is` lines that IOS prints with
-  `terminal exec prompt timestamp`,
+- the `Load for five secs`, `Time source is`, and `No time source` lines that
+  IOS prints with `terminal exec prompt timestamp`,
 - the `{master:0}` and `[edit]` lines that Junos prints above a prompt.
 
 A site format with its own header lines needs a `--marker` regular
@@ -134,7 +136,9 @@ sw1.log:16  sw1  show cdp neighbors detail  (42 lines)
 ...
 ```
 
-`--json` prints each block with its output.
+`--json` prints each block with its output. `axlib parse split` takes the
+same capture options as `axlib parse` (`-r`, `--glob`, `--command`, `--host`,
+`--marker`, `--encoding`).
 
 ### Piped output
 
@@ -158,10 +162,13 @@ axlib parse -p cisco_ios -r captures/         # every file below captures/
 axlib parse -p cisco_ios -r --glob '*.txt' captures/
 ```
 
-Files are read in sorted order. Hidden files and directories (`.git`) and
-binary files are skipped. Bytes that aren't valid text (stray terminal codes
+Files are read in sorted order. Hidden files and directories (`.git`) are
+skipped. Binary files (any file with a NUL byte) are skipped too, and counted
+with the skipped commands. Bytes that aren't valid text (stray terminal codes
 in a session log) become the replacement character `�` instead of stopping
-the run. `--encoding` changes the encoding from UTF-8.
+the run. `--encoding` changes the encoding from UTF-8. A capture file named
+`diff`, `templates`, or `split` can't be the first argument, because those
+words name the other commands; give it as `./diff`.
 
 `axlib parse diff` pairs commands by **device** and command. The device is the
 host name from the prompt. When a capture has no prompts and no `--host`, the
@@ -178,10 +185,13 @@ from filtered output. A trailing `| no-more` (Junos) doesn't change the output
 and is ignored. `axlib parse` prints how many commands it skipped, and `-v`
 lists them.
 
-A command **fails** when its template rejects the output: the template reached
-an `Error` state on a line it didn't expect. Failures are always printed, with
-the template's message, and they make the exit status 1. See
-[Troubleshooting](#troubleshooting).
+A command **fails** when its template rejects the output (the template reached
+an `Error` state on a line it didn't expect) or when its abbreviation fits
+more than one command. Failures are always printed, with the message, and they
+make the exit status of `axlib parse` 1. `axlib parse diff` prints them too,
+but its exit status reports only differences: a command that failed on one
+side is listed as `only before` or `only after`, and one that failed on both
+sides is not compared at all. See [Troubleshooting](#troubleshooting).
 
 ## Output
 
@@ -198,13 +208,15 @@ axlib parse -p cisco_ios -r captures/ -f table             # aligned text
 - **`jsonl`** writes one record per line as
   `{"device", "command", "source", "line", "record"}`, for `jq` and `grep`.
 - **`table`** writes one aligned table per command under a
-  `## device: command` heading. It contains no file names or line numbers, so
-  `diff -u before.txt after.txt` of two tables shows only real changes.
+  `## device: command` heading. It leaves out where each command came from
+  (file and line), so `diff -u before.txt after.txt` of two tables shows only
+  real changes.
 
-`--ignore FIELD` drops a field from every record. `--raw` turns
+`-o FILE` writes to a file instead of standard output. `--ignore FIELD` drops
+a field from every record; repeat it for more fields. `--raw` turns
 normalization off: you get every field, interface names as the device printed
 them, and rows in the device's order, which is exactly what the template
-returns.
+returns. `--ignore` has no effect with `--raw`.
 
 ## Comparing collections: `axlib parse diff`
 
@@ -215,8 +227,9 @@ axlib parse diff [options] BEFORE AFTER
 `BEFORE` and `AFTER` can each be a snapshot written by `axlib parse`, a capture
 file, a directory (with `-r` for a tree), or `-` for standard input on one
 side. Comparing two snapshots needs neither templates nor `--platform`. The
-capture options (`-r`, `--glob`, `--command`, `--host`, `--marker`) and the
-template options (`-p`, `-t`, `--config`) apply to whichever side is captures.
+capture options (`-r`, `--glob`, `--command`, `--host`, `--marker`,
+`--encoding`) and the template options (`-p`, `-t`, `--config`) apply to
+whichever side is captures. `-v` lists the skipped commands of each side.
 
 Within each command, records are paired by their key:
 
@@ -227,15 +240,20 @@ Within each command, records are paired by their key:
 | `+` | Added: the key is only in AFTER. |
 | `only before` / `only after` | The whole command is missing on one side. |
 
-When a command has no key, or several records share one, whole records are
-compared, so you see removals and additions but no `~` lines. The key is
+When a command has no key, the two sides have different keys (the template
+changed between collections), or several records share one key, whole records
+are compared, so you see removals and additions but no `~` lines. The key is
 explained under [How records are made comparable](#how-records-are-made-comparable).
 
+When nothing differs, the report is one line, such as
+`No differences in 9 commands.`
+
 `--ignore FIELD` leaves a field out of the comparison, for example
-`--ignore name` when port descriptions were rewritten on purpose. `--json`
-prints every change with both records and a summary. If a capture holds the
-same command twice for one device, the later one is compared and a note says
-so.
+`--ignore name` when port descriptions were rewritten on purpose; repeat it
+for more fields. `--json` prints every command compared, each change with both
+records and the fields that changed, and a summary of counts. If a capture
+holds the same command twice for one device, the later one is compared and a
+note says so.
 
 ## Adding your own templates
 
@@ -252,8 +270,13 @@ matches a command wins:
 | 4 | ntc-templates, or `NTC_TEMPLATES_DIR` as for netmiko | everything else |
 
 The sources add up rather than replace each other, so a personal directory
-never hides the team's. `axlib parse templates` shows the search path, and
-with a command it shows which template parses that command:
+never hides the team's. A directory named with `-t`,
+`AXLIB_TEXTFSM_TEMPLATES`, `template_dirs`, or `NTC_TEMPLATES_DIR` must exist,
+or the command stops with an error. Only the default `textfsm` directory
+beside `axlib.toml` may be missing.
+
+`axlib parse templates` shows the search path, and with a command it shows
+which template parses that command. `--json` prints the same as JSON:
 
 ```console
 $ axlib parse templates -p cisco_ios -t examples/parse/templates sh ip pim nei
@@ -275,7 +298,7 @@ arista_eos_show_vrrp.textfsm                parses "show vrrp" on arista_eos
 ```
 
 `examples/parse/templates/cisco_ios_show_ip_pim_neighbor.textfsm` is a
-complete, commented example:
+complete example. Without its comment lines, it reads:
 
 ```text
 Value Key NEIGHBOR (\d+\.\d+\.\d+\.\d+)
@@ -344,7 +367,8 @@ cisco_ios_show_module.textfsm:cisco_ios_show_module_status.textfsm, .*, cisco_io
   Put longer commands first, or end a pattern with `$`.
 - `Hostname` is checked against the host name from the prompt. The
   `core_bgp_summary` row above applies only to hosts whose names start with
-  `core-`.
+  `core-`. A command with no host name (no prompt and no `--host`) matches
+  every row.
 - Several templates separated by `:` are run on the same output, and their
   rows are merged on their `Key` fields.
 - A row with the wrong number of fields or an invalid regular expression is
@@ -365,8 +389,10 @@ environment, so you can see who changed a template and when.
 
 Unless you use `--raw`, each command's records go through three steps:
 
-1. **Volatile fields are dropped**, as are any you `--ignore`.
-2. **Interface names are spelled one way.** CDP's `Gig 1/0/48`, LLDP's
+1. **Volatile fields are dropped**, as are any you `--ignore`. Spaces around
+   each remaining value are removed.
+2. **Interface names are spelled one way** in the interface fields of the
+   command's profile (see the table below). CDP's `Gig 1/0/48`, LLDP's
    `Gi1/0/48`, and `GigabitEthernet1/0/48` all become
    `GigabitEthernet1/0/48`. A name is expanded only when its letters are an
    unambiguous abbreviation of a known interface type. Names such as
@@ -444,22 +470,45 @@ for command in compare(before, after).differences:
   like ntc-templates' `parse_output()`. It also searches your template
   directories first, accepts abbreviations, and normalizes records
   (`raw=True` turns that off). It raises `TemplateNotFoundError`,
-  `AmbiguousCommandError`, or `TemplateParseError`, all subclasses of
-  `axlib.parse.ParseError`.
+  `AmbiguousCommandError`, or `TemplateParseError` for the command, and
+  `ParseConfigurationError` (bad settings, no platform) or
+  `ParseDependencyError` (TextFSM or every template missing). All are
+  subclasses of `axlib.parse.ParseError`.
 - `parse_text(text, ...)` and `parse_paths(paths, ...)` return a `Snapshot`.
-  Its `results` are `ParsedCommand`s (records, key, host, source, template)
-  and its `problems` list what was skipped or failed.
-  `Snapshot.to_dict()` and `load_snapshot()` write and read the JSON form.
-- `compare(before, after, ignore=...)` returns a `SnapshotDiff`.
+  Its `results` are `ParsedCommand`s (`command`, `template_command`,
+  `platform`, `records`, `key`, `device`, `host`, `source`, `line`,
+  `templates`, `origin`). Its `problems` are `Problem`s (`kind` is `skipped` or `failed`,
+  then `message`, `command`, `host`, `source`, `line`), and `failures` lists
+  only the failed ones. `Snapshot.to_dict()` gives the JSON form, and
+  `load_snapshot(text)` reads it back. That returns `None` for text that isn't
+  a snapshot, including JSON that doesn't parse, such as a truncated file. It
+  raises `SnapshotFormatError` for a snapshot of another version or one with
+  missing or invalid fields.
+- `compare(before, after, ignore=...)` returns a `SnapshotDiff`. Its
+  `commands` are `CommandDiff`s (`device`, `command`, `status`, `changes`,
+  and a `records` count for a command on one side only), where `status` is
+  `same`, `changed`, `only-before`, or `only-after`. `differences` lists the
+  ones that aren't `same`. Each change is a `RecordChange` (`kind`, `key`,
+  `before`, `after`, and the changed `fields`). `to_dict()` gives the
+  `--json` form.
 - `TemplateCatalog.default(template_dirs=[...], platform=...)` loads the
   template search path once, to pass as `catalog=` to many calls.
-  `catalog.resolve(command, platform)` shows which template a command uses.
-- `split_capture(text)`, `canonical_interface(name)`, and
-  `normalize_records(records, command=...)` are the individual steps.
+  `TemplateCatalog.load(sources, platform=...)` builds one from your own list
+  of `axlib.parse.settings.TemplateSource` directories instead of the
+  settings; `include_bundled=False` leaves out ntc-templates.
+  `catalog.resolve(command, platform)` returns a `TemplateMatch` that shows
+  which template a command uses.
+- `load_parse_settings()` returns `ParseSettings`: the platform and the
+  template directories from the environment and `axlib.toml`.
+- `split_capture(text)`, which returns `CommandBlock`s,
+  `canonical_interface(name)`, and `normalize_records(records, command=...)`,
+  which returns the records and their key, are the individual steps.
+  `PROFILES` maps each command in the profile table above to its `Profile`.
 
-Each module also runs on its own: `python -m axlib.parse.capture`,
-`python -m axlib.parse.templates`, `python -m axlib.parse.snapshot`, and
-`python -m axlib.parse.diff`.
+`axlib parse` is also installed as `axlib-parse`, and `python -m axlib.parse`
+runs it too. Each module also runs on its own: `python -m axlib.parse.capture`
+(`split`), `python -m axlib.parse.templates`, `python -m axlib.parse.snapshot`
+(`axlib parse` itself), and `python -m axlib.parse.diff`.
 
 ## Exit status
 
@@ -467,7 +516,8 @@ Each module also runs on its own: `python -m axlib.parse.capture`,
 |---|---|---|---|
 | `axlib parse` | output parsed (skipped commands are fine) | a command failed, or nothing was parsed | error: unreadable file, no platform, TextFSM missing, bad settings |
 | `axlib parse diff` | no differences | differences | the comparison could not be made |
-| `axlib parse templates` | template found | no template, or ambiguous | error |
+| `axlib parse templates` | template found, or the search path listed | no template, or ambiguous | error: no platform, bad settings, missing template directory |
+| `axlib parse split` | commands listed (even none) | not used | error: unreadable file, bad `--marker` |
 
 ## Troubleshooting
 
@@ -490,11 +540,13 @@ exists, write one.
 
 **`no templates for platform 'cisco_xe'`**
 ntc-templates uses `cisco_ios` for IOS-XE. The message suggests the right
-name.
+name. `axlib parse` counts every command as skipped, so you see this message
+with `-v` or from `axlib parse templates`.
 
-**`ambiguous command 'sh ip b' ...`**
-The abbreviation fits more than one command in one template directory. A
-device would refuse it too. Spell out more of the command.
+**`ambiguous command 'sh ar' ...`**
+The abbreviation fits more than one command in one template directory
+(`show archive` and `show arp` on `cisco_ios`). A device would refuse it too.
+Spell out more of the command.
 
 **`no commands found`**
 No line looked like a command. Use `--command` for output without command

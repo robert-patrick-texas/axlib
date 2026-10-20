@@ -351,10 +351,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         None: Constructing argparse objects does not access credential backends.
     """
     parser = argparse.ArgumentParser(
+        prog="axlib credentials",
         description=(
             "Check whether axlib can resolve credential fields without printing "
             "their plaintext values."
-        )
+        ),
     )
     subparsers = parser.add_subparsers(dest="credential_type", required=True)
     network = subparsers.add_parser("network", help="Check network login fields.")

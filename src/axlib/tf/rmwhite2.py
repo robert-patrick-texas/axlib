@@ -156,6 +156,10 @@ normalize_whitespace_safely = normalize
 transform_text = normalize
 
 
+# The command name in usage lines and error messages.
+PROGRAM = "axlib tf whitespace-safe"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the standardized cautious-whitespace parser.
 
@@ -169,10 +173,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         argparse.ArgumentError: If an option conflicts with another definition.
     """
     parser = argparse.ArgumentParser(
+        prog=PROGRAM,
         description=(
             "Collapse whitespace outside line-balanced straight or curly quoted "
             "regions."
-        )
+        ),
     )
     add_text_io_arguments(parser)
     return parser
@@ -195,7 +200,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         text = read_text(args.input, encoding=args.encoding)
         write_text(args.output, normalize(text), encoding=args.encoding)
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
-        return render_cli_error("rmwhite2", exc)
+        return render_cli_error(PROGRAM, exc)
     return 0
 
 

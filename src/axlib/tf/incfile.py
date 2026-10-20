@@ -282,6 +282,10 @@ def expand_includes(
 transform_text = expand_includes
 
 
+# The command name in usage lines and error messages.
+PROGRAM = "axlib tf include"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the standardized include-expansion parser.
 
@@ -295,10 +299,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         argparse.ArgumentError: If an option conflicts with another definition.
     """
     parser = argparse.ArgumentParser(
+        prog=PROGRAM,
         description=(
             "Expand include directives with relative paths, cycle detection, "
             "and a recursion-depth limit."
-        )
+        ),
     )
     parser.add_argument(
         "-d",
@@ -384,7 +389,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
-        return render_cli_error("incfile", exc)
+        return render_cli_error(PROGRAM, exc)
     return 0
 
 

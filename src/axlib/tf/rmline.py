@@ -187,6 +187,10 @@ def normalize_text(
 transform_text = normalize_text
 
 
+# The command name in usage lines and error messages.
+PROGRAM = "axlib tf lines"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the standardized line-normalization parser.
 
@@ -200,7 +204,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         argparse.ArgumentError: If an option conflicts with another definition.
     """
     parser = argparse.ArgumentParser(
-        description="Trim line edges and control blank lines in text."
+        prog=PROGRAM,
+        description="Trim line edges and control blank lines in text.",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -259,7 +264,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         write_text(args.output, output, encoding=args.encoding)
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
-        return render_cli_error("rmline", exc)
+        return render_cli_error(PROGRAM, exc)
     return 0
 
 

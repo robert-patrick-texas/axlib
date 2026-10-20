@@ -52,6 +52,10 @@ def remove_double_slash(text: str) -> str:
 transform_text = remove_double_slash
 
 
+# The command name in usage lines and error messages.
+PROGRAM = "axlib tf slash-comments"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the standardized command-line parser for this filter.
 
@@ -65,6 +69,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         argparse.ArgumentError: If shared options conflict with local options.
     """
     parser = argparse.ArgumentParser(
+        prog=PROGRAM,
         description="Remove lines whose first non-whitespace characters are //.",
     )
     add_text_io_arguments(parser)
@@ -88,7 +93,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         text = read_text(args.input, encoding=args.encoding)
         write_text(args.output, remove_double_slash(text), encoding=args.encoding)
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
-        return render_cli_error("rmdouble", exc)
+        return render_cli_error(PROGRAM, exc)
     return 0
 
 

@@ -158,6 +158,10 @@ def strip_comments(
 transform_text = strip_comments
 
 
+# The command name in usage lines and error messages.
+PROGRAM = "axlib tf comments"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the standardized comment-filter command-line parser.
 
@@ -171,10 +175,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         argparse.ArgumentError: If an option definition conflicts.
     """
     parser = argparse.ArgumentParser(
+        prog=PROGRAM,
         description=(
             "Remove whitespace-delimited comments outside quoted text. "
             "Default markers are ;, !, and #."
-        )
+        ),
     )
     parser.add_argument(
         "-c",
@@ -220,7 +225,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
-        return render_cli_error("rmcomment", exc)
+        return render_cli_error(PROGRAM, exc)
     return 0
 
 

@@ -112,7 +112,8 @@ def parse_variable_assignments(
             ``--var``.
 
     Returns:
-        dict[str, str]: Parsed names and exact replacement values.
+        dict[str, str]: Parsed names and exact replacement values; when a
+            name repeats in any case, only the last assignment is kept.
 
     Raises:
         ValueError: If an item lacks ``=`` or has a blank variable name.
@@ -129,8 +130,16 @@ def parse_variable_assignments(
             raise ValueError(
                 f"Invalid variable definition {item!r}; name cannot be empty."
             )
+        # Names match case-insensitively, so a later "Host=" replaces an
+        # earlier "host=" rather than sitting beside it.
+        for earlier in [key for key in result if key.casefold() == name.casefold()]:
+            del result[earlier]
         result[name] = value
     return result
+
+
+# The command name in usage lines and error messages.
+PROGRAM = "axlib tf variables"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -146,10 +155,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         argparse.ArgumentError: If an option conflicts with another definition.
     """
     parser = argparse.ArgumentParser(
+        prog=PROGRAM,
         description=(
             "Replace <var>name</var> tags using repeated -v/--var NAME=VALUE "
             "assignments."
-        )
+        ),
     )
     parser.add_argument(
         "-v",
@@ -189,7 +199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = substitute_variables(text, variables)
         write_text(args.output, output, encoding=args.encoding)
     except (OSError, UnicodeError, LookupError, BrokenPipeError) as exc:
-        return render_cli_error("varsub", exc)
+        return render_cli_error(PROGRAM, exc)
     return 0
 
 

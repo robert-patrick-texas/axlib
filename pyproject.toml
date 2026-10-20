@@ -22,6 +22,7 @@ keywords = [
     "radius",
     "textfsm",
     "parsing",
+    "markdown",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -51,6 +52,7 @@ axlib-netenv-set = "axlib.credentials.netenv:set_main"
 axlib-netenv-clear = "axlib.credentials.netenv:clear_main"
 axlib-radius = "axlib.radius:main"
 axlib-parse = "axlib.parse.__main__:main"
+axlib-md2html = "axlib.md2html.__main__:main"
 axlib-tf = "axlib.tf.__main__:main"
 axlib-tf-include = "axlib.tf.incfile:main"
 axlib-tf-comments = "axlib.tf.rmcomment:main"
@@ -64,10 +66,17 @@ axlib-tf-variables = "axlib.tf.varsub:main"
 [project.urls]
 Homepage = "https://github.com/robert-patrick-texas/axlib"
 Repository = "https://github.com/robert-patrick-texas/axlib"
-Documentation = "https://github.com/robert-patrick-texas/axlib"
+Documentation = "https://robert-patrick-texas.github.io/axlib/"
 Issues = "https://github.com/robert-patrick-texas/axlib/issues"
 
 [project.optional-dependencies]
+# `axlib md2html`: markdown-it-py (CommonMark plus GitHub's tables and
+# strikethrough) with linkify-it-py, which turns bare URLs into links, and
+# mdit-py-plugins for GitHub's task-list check boxes and footnotes.
+markdown = [
+    "markdown-it-py[linkify]>=4.0",
+    "mdit-py-plugins>=0.5",
+]
 # `axlib parse`: the TextFSM engine plus the ntc-templates collection of
 # ~1,000 community templates for show commands on many vendors' devices.
 textfsm = [
@@ -87,7 +96,7 @@ build-backend = "setuptools.build_meta"
 dev = [
     # Developers always get every optional extra, so `ty` can check and pytest
     # can exercise axlib.credentials.tui and axlib.parse after a plain `uv sync`.
-    "axlib[textfsm,tui]",
+    "axlib[markdown,textfsm,tui]",
     "pytest>=8",
     "pytest-cov>=5",
     # Pinned exactly: `select = ["ALL"]` in [tool.ruff.lint] means every ruff

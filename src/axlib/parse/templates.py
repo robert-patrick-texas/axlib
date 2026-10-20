@@ -84,6 +84,9 @@ _COMPLETION = re.compile(r"\[\[(.+?)\]\]")
 _REGEX_SYNTAX = re.compile(r"[\\^$.|?*+()\[\]{}]")
 # Junos users add this to turn the pager off; it does not change the output.
 _NO_MORE = re.compile(r"\s*\|\s*no-more$")
+# Cisco's "do" runs an exec command from a configuration mode; its output is
+# the command's own, so "do show ip int br" is parsed as "show ip int br".
+_DO_PREFIX = re.compile(r"^do\s+", re.IGNORECASE)
 # A plain platform name, as opposed to a pattern such as "(hp|aruba)_procurve".
 _PLAIN_NAME = re.compile(r"\w+")
 # Hints for platform names that ntc-templates spells differently.
@@ -144,18 +147,19 @@ def spell_out(pattern: str) -> str | None:
 
 
 def normalize_command(command: str) -> str:
-    """Collapse whitespace and drop a harmless trailing ``| no-more``.
+    """Collapse whitespace and drop a leading ``do`` and a trailing ``| no-more``.
 
     Args:
         command (str): Command as captured.
 
     Returns:
-        str: The command with single spaces.
+        str: The command with single spaces, as it would be typed at the
+            exec prompt.
 
     Raises:
         None: Only string operations are performed.
     """
-    return _NO_MORE.sub("", " ".join(command.split()))
+    return _DO_PREFIX.sub("", _NO_MORE.sub("", " ".join(command.split())))
 
 
 def _abbreviates(typed: Sequence[str], full: Sequence[str]) -> bool:

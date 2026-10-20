@@ -6,6 +6,7 @@
 #
 #   tar xzf axlib-<version>.tar.gz
 #   sudo ./axlib-<version>/install.sh [--with-netenv] [--with-tui] [--with-textfsm]
+#                                     [--with-markdown]
 #
 # Result (defaults):
 #   /opt/shared/python           uv-managed CPython, readable by every user
@@ -48,6 +49,7 @@ DATA_DIR=/var/lib/axlib
 # Empty means "keep what this host already has"; resolved after the options.
 WITH_TUI=
 WITH_TEXTFSM=
+WITH_MARKDOWN=
 WITH_NETENV=
 CREATE_STORE=1
 UV_BIN=
@@ -84,6 +86,9 @@ Options:
                       (axlib[textfsm]: TextFSM and ntc-templates), and create
                       CONFIG_DIR/textfsm for the team's own templates
   --no-textfsm        remove show-command parsing (the templates are kept)
+  --with-markdown     also install Markdown-to-HTML conversion, axlib md2html
+                      (axlib[markdown]: markdown-it-py)
+  --no-markdown       remove Markdown-to-HTML conversion
   --with-netenv       load NETUSER/NETPASS/NETENABLE at every interactive login
                       (/etc/profile.d/axlib-netenv.sh; read docs/NETENV.md first)
   --no-netenv         remove that login snippet
@@ -91,8 +96,9 @@ Options:
   --store             create or verify the SQLite store (the default)
   -h, --help          show this help
 
-Without --with-tui/--no-tui, --with-textfsm/--no-textfsm, or
---with-netenv/--no-netenv, the host keeps its current choice.
+Without --with-tui/--no-tui, --with-textfsm/--no-textfsm,
+--with-markdown/--no-markdown, or --with-netenv/--no-netenv, the host keeps
+its current choice.
 
 Environment:
   UV                  path to the uv binary (default: the uv of the previous
@@ -117,6 +123,8 @@ while [ $# -gt 0 ]; do
     --no-tui) WITH_TUI=0 ;;
     --with-textfsm) WITH_TEXTFSM=1 ;;
     --no-textfsm) WITH_TEXTFSM=0 ;;
+    --with-markdown) WITH_MARKDOWN=1 ;;
+    --no-markdown) WITH_MARKDOWN=0 ;;
     --with-netenv) WITH_NETENV=1 ;;
     --no-netenv) WITH_NETENV=0 ;;
     --no-store) CREATE_STORE=0 ;;
@@ -166,7 +174,7 @@ UV_BIN=$(cd "$(dirname "$UV")" && pwd)/$(basename "$UV")
 case $UV_BIN in *"'"*) die "the uv path cannot contain a single quote: $UV_BIN" ;; esac
 
 # The extras of the installed axlib requirement, from the line uv writes in
-# the project's pyproject.toml: "axlib[textfsm,tui]" gives textfsm,tui.
+# the project's pyproject.toml: "axlib[markdown,tui]" gives markdown,tui.
 installed_extras() {
     sed -n 's/.*"axlib\[\([^]]*\)\].*/\1/p' "$PREFIX/pyproject.toml" 2>/dev/null \
         | tr -d ' ' | head -n 1
@@ -185,6 +193,9 @@ if [ -z "$WITH_TUI" ]; then
 fi
 if [ -z "$WITH_TEXTFSM" ]; then
     if has_extra textfsm; then WITH_TEXTFSM=1; else WITH_TEXTFSM=0; fi
+fi
+if [ -z "$WITH_MARKDOWN" ]; then
+    if has_extra markdown; then WITH_MARKDOWN=1; else WITH_MARKDOWN=0; fi
 fi
 if [ -z "$WITH_NETENV" ]; then
     if [ -e /etc/profile.d/axlib-netenv.sh ]; then WITH_NETENV=1; else WITH_NETENV=0; fi
@@ -252,6 +263,11 @@ if [ "$WITH_TEXTFSM" -eq 1 ]; then
 elif has_extra textfsm; then
     UNWANTED+=("show-command parsing (axlib[textfsm])")
 fi
+if [ "$WITH_MARKDOWN" -eq 1 ]; then
+    EXTRAS+=(--extra markdown)
+elif has_extra markdown; then
+    UNWANTED+=("Markdown-to-HTML conversion (axlib[markdown])")
+fi
 if [ "${#UNWANTED[@]}" -gt 0 ]; then
     # uv add keeps the extras of an existing requirement, so drop it first.
     # --no-sync leaves .venv alone until the commands below update it.
@@ -264,7 +280,8 @@ say "Installing $REQUIREMENT ${EXTRAS[*]-} into $PREFIX/.venv"
 (cd "$PREFIX" && "$UV" add --quiet --upgrade-package axlib --reinstall-package axlib \
     "$REQUIREMENT" ${EXTRAS[@]+"${EXTRAS[@]}"})
 # uv add only installs; uv sync also uninstalls what uv.lock no longer lists
-# (textual and rich, or textfsm and ntc-templates, and their dependencies).
+# (such as textual and rich, or textfsm and ntc-templates, and their
+# dependencies).
 if [ "${#UNWANTED[@]}" -gt 0 ]; then
     (cd "$PREFIX" && "$UV" sync --quiet)
 fi
@@ -340,6 +357,7 @@ DATA_DIR='$DATA_DIR'
 CONFIG_FILE='$AXLIB_CONFIG_FILE'
 WITH_TUI='$WITH_TUI'
 WITH_TEXTFSM='$WITH_TEXTFSM'
+WITH_MARKDOWN='$WITH_MARKDOWN'
 WITH_NETENV='$WITH_NETENV'
 CREATE_STORE='$CREATE_STORE'
 UV_BIN='$UV_BIN'
@@ -409,6 +427,11 @@ if [ "$WITH_TEXTFSM" -eq 1 ]; then
     cat <<EOF
   Parsing:       axlib parse -p cisco_ios -r captures/   (docs/PARSING.md)
   Templates:     $CONFIG_DIR/textfsm/   (the team's .textfsm files, searched first)
+EOF
+fi
+if [ "$WITH_MARKDOWN" -eq 1 ]; then
+    cat <<EOF
+  Markdown:      axlib md2html notes.md   (writes notes.html; docs/MARKDOWN.md)
 EOF
 fi
 cat <<EOF

@@ -21,6 +21,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+markdown = [
+    { name = "markdown-it-py", extra = ["linkify"] },
+    { name = "mdit-py-plugins" },
+]
 textfsm = [
     { name = "ntc-templates" },
     { name = "textfsm" },
@@ -32,7 +36,7 @@ tui = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "axlib", extra = ["textfsm", "tui"] },
+    { name = "axlib", extra = ["markdown", "textfsm", "tui"] },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -42,17 +46,19 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cryptography", specifier = ">=42" },
+    { name = "markdown-it-py", extras = ["linkify"], marker = "extra == 'markdown'", specifier = ">=4.0" },
+    { name = "mdit-py-plugins", marker = "extra == 'markdown'", specifier = ">=0.5" },
     { name = "ntc-templates", marker = "extra == 'textfsm'", specifier = ">=9.3.0" },
     { name = "redis", specifier = ">=5" },
     { name = "rich", marker = "extra == 'tui'", specifier = ">=15.0.0" },
     { name = "textfsm", marker = "extra == 'textfsm'", specifier = ">=2.1.0" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=8.2.8" },
 ]
-provides-extras = ["textfsm", "tui"]
+provides-extras = ["markdown", "textfsm", "tui"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "axlib", extras = ["textfsm", "tui"], editable = "." },
+    { name = "axlib", extras = ["markdown", "textfsm", "tui"], editable = "." },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=5" },
     { name = "ruff", specifier = "==0.16.7" },
