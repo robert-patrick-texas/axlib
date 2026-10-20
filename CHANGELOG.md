@@ -13,6 +13,7 @@
 - Fixed: `axlib parse` now parses a command run from a configuration mode with `do` (`sw1(config)#do show ip int br`); before, it was skipped as having no template.
 - Fixed: `axlib credentials` and the `axlib tf` filters name themselves in usage lines (`usage: axlib tf comments ...` instead of `usage: axlib ...`) and in error messages (`axlib tf whitespace: ...` instead of `rmwhite: ...`).
 - Fixed: `axlib tf variables` kept the second of three assignments to a name given in different cases (`-v host=a -v Host=b -v host=c` gave `b`); the last one now wins, as documented.
+- Changed `axlib netenv-set`: for a record without an enable secret it no longer prints `unset NETENABLE`, so its output holds only `export` lines. The new `--unset` option prints it again (`render_exports(values, unset_missing=True)` in Python); a record with an enable secret still gives `export NETENABLE=...` either way. The `netenv-set` shell function in `examples/netenv/netenv.sh` (also `/etc/profile.d/axlib-netenv.sh`) passes `--unset`, so shells that use it still drop an enable secret left by an earlier record. A script that runs `eval "$(axlib netenv-set)"` itself now keeps an existing `NETENABLE` unless it adds `--unset`.
 - Fixed credential handling:
   - A key file or database named by a relative path in `axlib.toml` that is a symlink is now refused like any other symlink; resolving the whole path used to follow the link to its target.
   - `axlib credentials` prints one line and exits 2 when the configuration file is missing or unreadable, instead of a Python traceback.

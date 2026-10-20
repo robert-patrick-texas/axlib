@@ -48,7 +48,10 @@ _axlib_netenv() {
     return "$rc"
 }
 
-netenv-set() { _axlib_netenv set "$@"; }
+# --unset: this shell may still hold the NETENABLE of a record loaded earlier,
+# so a record without an enable secret must remove it, not leave it in place
+# beside a different NETUSER.
+netenv-set() { _axlib_netenv set --unset "$@"; }
 netenv-clear() { _axlib_netenv clear "$@"; }
 
 # Autoload in interactive shells only.  bash also reads ~/.bashrc for

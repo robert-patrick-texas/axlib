@@ -7,7 +7,7 @@ into your shell as three environment variables:
 | --- | --- | --- |
 | `NETUSER` | `netuser` | Device login username (required) |
 | `NETPASS` | `netpass` | Device login password (required) |
-| `NETENABLE` | `netenable` | Enable secret (optional; unset when the record has none) |
+| `NETENABLE` | `netenable` | Enable secret (optional; see [`--unset`](#axlib-netenv-set-options) for a record without one) |
 
 `axlib netenv-clear` removes all three. With the shell integration installed,
 this happens automatically each time you SSH in, and every tool you start
@@ -58,8 +58,13 @@ program exits. So `axlib netenv-set` does not set anything itself. It
 $ axlib netenv-set --quiet | cat  # only to show the format; do not do this
 export NETUSER=first.last
 export NETPASS='S3cret pa$$'
-unset NETENABLE
 ```
+
+A record with an enable secret adds `export NETENABLE=...`. A record without
+one adds nothing for `NETENABLE`, so the output holds only assignments; with
+`--unset` it adds `unset NETENABLE`, which removes an enable secret that an
+earlier `eval` left in the shell. The shell functions below always pass
+`--unset`.
 
 ```bash
 eval "$(axlib netenv-set)"        # what actually loads the variables
@@ -250,6 +255,7 @@ Notes on the snippet:
 | `--service NAME` | Load this record instead of the one named by `$USER`, e.g. a lab account. |
 | `--allow-shared` | If your record is missing or incomplete, use the configured shared service (`credentials.shared_service` / `AXLIB_SHARED_SERVICE`) and print a warning. Off by default. |
 | `--check` | Report on standard error which variables would be set or missing. Values are never shown, and nothing is exported. |
+| `--unset` | When the record has no enable secret, also print `unset NETENABLE`, so one left in the shell by an earlier record is removed. Without it, nothing is printed for `NETENABLE` and an existing value stays. The `netenv-set` shell function always passes it. |
 | `-q`, `--quiet` | Hide the success and "not found" notices. Warnings and errors still print. |
 
 | Exit status | Meaning | Environment |
@@ -276,7 +282,7 @@ which you can call from your own tools:
 | `operator_service(environ=None)` | Returns `(service, warning)`: `$USER`, or the login account when `USER` is unset, plus a warning (or `None`) when the two differ or `USER` is unset. |
 | `lookup_network_record(service, *, settings)` | Reads `netuser`, `netpass`, and `netenable` for one service, ignoring existing `NET*` variables. Returns a `NetworkLookup`. |
 | `NetworkLookup` | Has `service`, `values` (field to value or `None`; left out of `repr()`), `problems` (store warnings), `missing` (absent required fields), and `found`. |
-| `render_exports(values)` | Returns the `export`/`unset` lines that `netenv-set` prints. |
+| `render_exports(values, *, unset_missing=False)` | Returns the `export` lines that `netenv-set` prints, one per field with a value. With `unset_missing=True` (what `--unset` does), a field without a value becomes an `unset` line. |
 | `render_unset()` | Returns `unset NETUSER NETPASS NETENABLE`. |
 | `set_main(argv)`, `clear_main(argv)` | Run the two commands and return their exit status. |
 
@@ -311,9 +317,10 @@ Store warnings are also printed to standard error as they happen, as with
   the shared service when your record is incomplete. `netenv-set` does so only
   with `--allow-shared`, and it always says so on standard error. Check
   `echo "$NETUSER"` to see which account is loaded.
-- **A record without `netenable`** exports `NETUSER` and `NETPASS` and
-  **unsets** `NETENABLE`, so an enable secret from another record does not
-  linger.
+- **A record without `netenable`** exports `NETUSER` and `NETPASS`. The
+  shell functions, and `eval "$(axlib netenv-set --unset)"`, also **unset**
+  `NETENABLE`, so an enable secret from another record does not linger. A
+  plain `eval "$(axlib netenv-set)"` leaves an existing `NETENABLE` in place.
 
 ## Examples
 
@@ -365,10 +372,11 @@ netuser, netpass, netenable = ax.getkeys()
 ```
 
 `ax.getkeys()` still reads the store for any variable that is not set. After
-loading a record without an enable secret, `NETENABLE` is unset, so
-`ax.getkeys()` looks up `netenable` in `$USER`'s record. After
-`netenv-set --service lab-readonly`, that can pair the lab login with your own
-enable secret.
+loading a record without an enable secret with the shell function (or
+`--unset`), `NETENABLE` is unset, so `ax.getkeys()` looks up `netenable` in
+`$USER`'s record. After `netenv-set --service lab-readonly`, that can pair
+the lab login with your own enable secret. Without `--unset`, an enable
+secret already in the shell stays and is used instead.
 
 Pass them to a tool that reads its own variable names, for this command
 only:

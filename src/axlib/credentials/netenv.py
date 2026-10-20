@@ -37,6 +37,9 @@ Example:
     >>> print(render_exports({"netuser": "ops", "netpass": "p$ss w0rd"}))
     export NETUSER=ops
     export NETPASS='p$ss w0rd'
+    >>> print(render_exports({"netuser": "ops", "netpass": "x"}, unset_missing=True))
+    export NETUSER=ops
+    export NETPASS=x
     unset NETENABLE
     >>> render_unset()
     'unset NETUSER NETPASS NETENABLE'
@@ -229,14 +232,21 @@ def lookup_network_record(
     return NetworkLookup(service=service, values=values, problems=tuple(problems))
 
 
-def render_exports(values: Mapping[str, str | None]) -> str:
+def render_exports(
+    values: Mapping[str, str | None], *, unset_missing: bool = False
+) -> str:
     """Render ``export`` statements for bash, zsh, and other POSIX shells.
 
-    A field without a value is emitted as ``unset`` so a value inherited from
-    an earlier session (for example an old enable secret) cannot linger.
+    Each field with a value becomes ``export NAME=value``.  A field without a
+    value (in practice ``netenable``, the only optional one) is left out, so
+    the output holds only assignments.  With ``unset_missing`` it becomes
+    ``unset NAME`` instead, which removes a value an earlier ``eval`` left in
+    the shell, such as another record's enable secret.
 
     Args:
         values (Mapping[str, str | None]): Network fields such as ``netpass``.
+        unset_missing (bool): Emit ``unset NAME`` for each field without a
+            value, for callers that ``eval`` into a long-lived shell.
 
     Returns:
         str: Newline-separated shell statements, safe to pass to ``eval``.
@@ -251,7 +261,7 @@ def render_exports(values: Mapping[str, str | None]) -> str:
             # shlex.quote wraps the text in single quotes when needed; inside
             # them the shell performs no expansion, so eval assigns it literally.
             lines.append(f"export {variable}={shlex.quote(value)}")
-        else:
+        elif unset_missing:
             lines.append(f"unset {variable}")
     return "\n".join(lines)
 
@@ -338,6 +348,13 @@ def build_set_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Report which fields would be set (never their values) on "
         "standard error, and export nothing.",
+    )
+    parser.add_argument(
+        "--unset",
+        action="store_true",
+        help="Also print 'unset NETENABLE' when the record has no enable "
+        "secret, so one left in the shell by an earlier record is removed. "
+        "The netenv-set shell function always passes it.",
     )
     parser.add_argument(
         "-q",
@@ -463,7 +480,7 @@ def set_main(
     if args.check:
         return EXIT_EXPORTED
 
-    print(render_exports(result.values), file=out)
+    print(render_exports(result.values, unset_missing=args.unset), file=out)
     if not args.quiet:
         exported = [v for n, v in ENV_VARIABLES.items() if result.values.get(n)]
         report(f"netenv: exported {', '.join(exported)} for {result.service!r}.")

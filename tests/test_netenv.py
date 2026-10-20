@@ -10,6 +10,7 @@ import pwd
 import re
 import shutil
 import subprocess
+import sys
 import tomllib
 from collections.abc import Mapping, Sequence
 from io import StringIO
@@ -125,13 +126,22 @@ def _eval_in_bash(code: str, tmp_path: Path) -> dict[str, str]:
     return dict(item.split("=", 1) for item in result.stdout.split("\0") if item)
 
 
-def test_render_exports_quotes_and_unsets_empty_fields() -> None:
-    code = render_exports({"netuser": "ops", "netpass": "a b$c", "netenable": None})
-    assert code.splitlines() == [
+def test_render_exports_quotes_and_leaves_out_empty_fields() -> None:
+    values = {"netuser": "ops", "netpass": "a b$c", "netenable": None}
+
+    assert render_exports(values).splitlines() == [
+        "export NETUSER=ops",
+        "export NETPASS='a b$c'",
+    ]
+    assert render_exports(values, unset_missing=True).splitlines() == [
         "export NETUSER=ops",
         "export NETPASS='a b$c'",
         "unset NETENABLE",
     ]
+    # A field with a value is exported whether or not unset_missing is given.
+    full = {**values, "netenable": "en"}
+    assert render_exports(full) == render_exports(full, unset_missing=True)
+    assert render_exports(full).endswith("export NETENABLE=en")
     assert render_unset() == "unset NETUSER NETPASS NETENABLE"
 
 
@@ -215,13 +225,69 @@ def test_set_output_round_trips_through_bash_eval(config: Path, tmp_path: Path) 
 
 
 @pytest.mark.skipif(BASH is None, reason="bash is not installed")
-def test_record_without_enable_unsets_a_stale_netenable(
+def test_record_without_enable_prints_unset_only_with_the_option(
     config: Path, tmp_path: Path
 ) -> None:
+    # _eval_in_bash starts with NETENABLE=stale, as if an earlier record
+    # with an enable secret had been loaded into the shell.
     status, out, _ = _run_set(config, "--service", "lab.user", "--quiet")
 
     assert status == EXIT_EXPORTED
+    assert "unset" not in out
+    assert _eval_in_bash(out, tmp_path) == {
+        "NETUSER": "lab",
+        "NETPASS": "labpass",
+        "NETENABLE": "stale",
+    }
+
+    status, out, _ = _run_set(config, "--service", "lab.user", "--quiet", "--unset")
+
+    assert status == EXIT_EXPORTED
+    assert out.splitlines()[-1] == "unset NETENABLE"
     assert _eval_in_bash(out, tmp_path) == {"NETUSER": "lab", "NETPASS": "labpass"}
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
+def test_shell_function_removes_a_stale_netenable(config: Path, tmp_path: Path) -> None:
+    # The netenv-set function in netenv.sh runs the real command (through a
+    # launcher in AXLIB_NETENV_SCRIPTS) and must pass --unset, because the
+    # shell it evals into may hold another record's enable secret.
+    launchers = tmp_path / "bin"
+    launchers.mkdir()
+    launcher = launchers / "netenv-set"
+    launcher.write_text(
+        f"#!{sys.executable}\n"
+        "from axlib.credentials.netenv import set_main\n"
+        "raise SystemExit(set_main())\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    script = (
+        'source "$1"; netenv-set --service lab.user --quiet || exit; '
+        'printf "%s|%s|%s" "$NETUSER" "$NETPASS" "${NETENABLE-<unset>}"'
+    )
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and script
+        [
+            BASH,
+            "-c",
+            script,
+            "bash",
+            str(PROJECT_ROOT / "examples" / "netenv" / "netenv.sh"),
+        ],
+        cwd=tmp_path,
+        env={
+            "PATH": os.environ["PATH"],
+            "AXLIB_CONFIG_FILE": str(config),
+            "AXLIB_NETENV_SCRIPTS": str(launchers),
+            "AXLIB_NETENV_AUTOLOAD": "0",
+            "NETENABLE": "stale",
+        },
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert result.stdout == "lab|labpass|<unset>"
 
 
 def test_missing_record_prints_nothing_and_does_not_use_shared(
