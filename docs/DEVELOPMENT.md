@@ -54,6 +54,21 @@ docstring audit, and pytest with coverage.
 5. Document exactly which text can be changed or destroyed.
 6. Add unit and CLI tests, including line endings and empty input.
 
+## Adding a comparison profile to `axlib parse`
+
+A profile in `axlib.parse.normalize.PROFILES` tells `axlib parse diff` which
+fields identify a record, which hold interface names, and which change on
+every run, for one spelled-out command. It is used only when the command's
+template marks no `Key` fields, so prefer `Key` in a template you control.
+
+1. Check the field names the ntc templates produce on each platform
+   (`axlib parse templates -p PLATFORM COMMAND` shows the template file).
+2. Add the command to `PROFILES`, reusing a `Profile` when the fields match.
+3. Add a capture to `examples/parse` or a test in `tests/test_parse_*.py` with
+   reordered rows and a changed volatile field, and check that
+   `axlib parse diff` reports only the real change.
+4. Update the profile table in `docs/PARSING.md`.
+
 ## Releasing
 
 The release number is written in exactly one place, `version` in

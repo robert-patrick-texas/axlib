@@ -1,0 +1,144 @@
+sw1#terminal length 0
+sw1#sh cdp nei
+Capability Codes: R - Router, T - Trans Bridge, B - Source Route Bridge
+                  S - Switch, H - Host, I - IGMP, r - Repeater, P - Phone,
+                  D - Remote, C - CVTA, M - Two-port Mac Relay
+
+Device ID        Local Intrfce     Holdtme    Capability  Platform  Port ID
+SEP001122334455  Gig 1/0/10        128              H P M IP Phone  Port 1
+dist-sw-02.example.net
+                 Gig 1/0/1         166             R S I  C9300-48P Gig 1/0/49
+core-rtr-01.example.net
+                 Gig 1/0/48        121              R I   ISR4451-X Gig 0/0/2
+
+Total cdp entries displayed : 3
+sw1#show cdp neighbors detail
+-------------------------
+Device ID: dist-sw-02.example.net
+Entry address(es):
+  IP address: 192.0.2.2
+Platform: cisco C9300-48P,  Capabilities: Router Switch IGMP
+Interface: GigabitEthernet1/0/1,  Port ID (outgoing port): GigabitEthernet1/0/49
+Holdtime : 166 sec
+
+Version :
+Cisco IOS Software [Cupertino], Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.9.4, RELEASE SOFTWARE (fc5)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Wed 26-Jul-23 10:17 by mcpre
+
+advertisement version: 2
+VTP Management Domain: ''
+Native VLAN: 1
+Duplex: full
+Management address(es):
+  IP address: 192.0.2.2
+
+-------------------------
+Device ID: core-rtr-01.example.net
+Entry address(es):
+  IP address: 192.0.2.1
+Platform: cisco ISR4451-X/K9,  Capabilities: Router IGMP
+Interface: GigabitEthernet1/0/48,  Port ID (outgoing port): GigabitEthernet0/0/2
+Holdtime : 121 sec
+
+Version :
+Cisco IOS Software [Bengaluru], ISR Software (X86_64_LINUX_IOSD-UNIVERSALK9-M), Version 17.6.5, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Wed 25-Jan-23 16:15 by mcpre
+
+advertisement version: 2
+VTP Management Domain: ''
+Duplex: full
+Management address(es):
+  IP address: 192.0.2.1
+
+Total cdp entries displayed : 2
+sw1#show lldp neighbors
+Capability codes:
+    (R) Router, (B) Bridge, (T) Telephone, (C) DOCSIS Cable Device
+    (W) WLAN Access Point, (P) Repeater, (S) Station, (O) Other
+
+Device ID           Local Intf     Hold-time  Capability      Port ID
+core-rtr-01.example.Gi1/0/48       120        R               Gi0/0/2
+dist-sw-02.example.nGi1/0/1        120        B,R             Gi1/0/49
+
+Total entries displayed: 2
+
+sw1#show lldp neighbors detail
+------------------------------------------------
+Local Intf: Gi1/0/1
+Chassis id: 00a3.d14f.0200
+Port id: Gi1/0/49
+Port Description: GigabitEthernet1/0/49
+System Name: dist-sw-02.example.net
+
+System Description: 
+Cisco IOS Software [Cupertino], Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.9.4, RELEASE SOFTWARE (fc5)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Wed 26-Jul-23 10:17 by mcpre
+
+Time remaining: 117 seconds
+System Capabilities: B,R
+Enabled Capabilities: B,R
+Management Addresses:
+    IP: 192.0.2.2
+Auto Negotiation - not supported
+Physical media capabilities - not advertised
+Media Attachment Unit type - not advertised
+Vlan ID: 1
+
+------------------------------------------------
+Local Intf: Gi1/0/48
+Chassis id: 00a3.d14f.0100
+Port id: Gi0/0/2
+Port Description: GigabitEthernet0/0/2
+System Name: core-rtr-01.example.net
+
+System Description: 
+Cisco IOS Software [Bengaluru], ISR Software (X86_64_LINUX_IOSD-UNIVERSALK9-M), Version 17.6.5, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Wed 25-Jan-23 16:15 by mcpre
+
+Time remaining: 92 seconds
+System Capabilities: B,R
+Enabled Capabilities: R
+Management Addresses:
+    IP: 192.0.2.1
+Auto Negotiation - not supported
+Physical media capabilities - not advertised
+Media Attachment Unit type - not advertised
+Vlan ID: - not advertised
+
+Total entries displayed: 2
+
+sw1#show ip interface brief
+Interface              IP-Address      OK? Method Status                Protocol
+Vlan1                  unassigned      YES NVRAM  administratively down down    
+Vlan10                 10.10.0.1       YES NVRAM  up                    up      
+Vlan20                 10.20.0.1       YES NVRAM  up                    up      
+GigabitEthernet0/0     192.0.2.11      YES NVRAM  up                    up      
+GigabitEthernet1/0/1   unassigned      YES unset  up                    up      
+GigabitEthernet1/0/5   unassigned      YES unset  down                  down    
+GigabitEthernet1/0/10  unassigned      YES unset  up                    up      
+GigabitEthernet1/0/48  unassigned      YES unset  up                    up      
+sw1#show int status
+
+Port         Name               Status       Vlan       Duplex  Speed Type
+Gi1/0/1      uplink-dist-sw-02  connected    trunk        a-full a-1000 10/100/1000BaseTX
+Gi1/0/5      ap-lobby-01        notconnect   trunk          auto   auto 10/100/1000BaseTX
+Gi1/0/10     phone-desk-12      connected    20           a-full  a-100 10/100/1000BaseTX
+Gi1/0/48     uplink-core-rtr-01 connected    routed       a-full a-1000 10/100/1000BaseTX
+sw1#sh ip pim nei
+PIM Neighbor Table
+Mode: B - Bidir Capable, DR - Designated Router, N - Default DR Priority,
+      P - Proxy Capable, S - State Refresh Capable, G - GenID Capable,
+      L - DR Load-balancing Capable
+Neighbor          Interface                Uptime/Expires    Ver   DR
+Address                                                            Prio/Mode
+10.20.0.2         Vlan20                   00:12:07/00:01:33 v2    1 / S P G
+10.10.0.2         Vlan10                   3w2d/00:01:17     v2    1 / DR S P G
+sw1#

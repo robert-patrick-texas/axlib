@@ -1,0 +1,27 @@
+# show ip pim neighbor (Cisco IOS and IOS-XE)
+#
+# An example operator template for axlib parse: ntc-templates has none for
+# this command.  The file name, <platform>_<command with _ for spaces>.textfsm,
+# is all axlib needs to use it; no index file is required.
+#
+# Key marks the fields that identify a neighbor, so `axlib parse diff` can
+# report "this neighbor's mode changed" instead of "one removed, one added".
+# Uptime/Expires changes every time the command runs, so the rule matches it
+# with \S+/\S+ but does not capture it: a value that is never recorded can
+# never show up as a difference.
+Value Key NEIGHBOR (\d+\.\d+\.\d+\.\d+)
+Value Key INTERFACE (\S+)
+Value VERSION (v\d)
+Value DR_PRIORITY (\d+)
+Value MODE (\S.*?)
+
+Start
+  ^PIM\s+Neighbor\s+Table
+  ^Mode:
+  ^\s+[A-Z]+\s+-\s+
+  ^Neighbor\s+Interface
+  ^Address\s+Prio/Mode
+  ^${NEIGHBOR}\s+${INTERFACE}\s+\S+/\S+\s+${VERSION}\s+${DR_PRIORITY}\s*/\s*${MODE}\s*$$ -> Record
+  ^${NEIGHBOR}\s+${INTERFACE}\s+\S+/\S+\s+${VERSION}\s+${DR_PRIORITY}\s*/?\s*$$ -> Record
+  ^\s*$$
+  ^. -> Error

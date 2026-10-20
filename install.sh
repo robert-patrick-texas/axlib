@@ -5,7 +5,7 @@
 # Install axlib from an unpacked release tarball on a shared Linux host.
 #
 #   tar xzf axlib-<version>.tar.gz
-#   sudo ./axlib-<version>/install.sh [--with-netenv] [--with-tui]
+#   sudo ./axlib-<version>/install.sh [--with-netenv] [--with-tui] [--with-textfsm]
 #
 # Result (defaults):
 #   /opt/shared/python           uv-managed CPython, readable by every user
@@ -18,6 +18,7 @@
 #   /etc/axlib/axlib.toml        configuration (never overwritten)
 #   /etc/axlib/install.env       the options of the last run (see below)
 #   /etc/axlib/sqlite-aes256.key AES-256 key, root:netops 0640
+#   /etc/axlib/textfsm/          shared TextFSM templates (--with-textfsm)
 #   /var/lib/axlib/credentials.db encrypted SQLite store, root:netops 0660
 #   /etc/environment, /etc/profile.d/axlib-config.sh   AXLIB_CONFIG_FILE
 #
@@ -46,6 +47,7 @@ CONFIG_DIR=/etc/axlib
 DATA_DIR=/var/lib/axlib
 # Empty means "keep what this host already has"; resolved after the options.
 WITH_TUI=
+WITH_TEXTFSM=
 WITH_NETENV=
 CREATE_STORE=1
 UV_BIN=
@@ -78,6 +80,10 @@ Options:
   --data-dir DIR      credential database directory      (default: $DATA_DIR)
   --with-tui          also install the credential manager (axlib[tui])
   --no-tui            remove the credential manager
+  --with-textfsm      also install show-command parsing, axlib parse
+                      (axlib[textfsm]: TextFSM and ntc-templates), and create
+                      CONFIG_DIR/textfsm for the team's own templates
+  --no-textfsm        remove show-command parsing (the templates are kept)
   --with-netenv       load NETUSER/NETPASS/NETENABLE at every interactive login
                       (/etc/profile.d/axlib-netenv.sh; read docs/NETENV.md first)
   --no-netenv         remove that login snippet
@@ -85,8 +91,8 @@ Options:
   --store             create or verify the SQLite store (the default)
   -h, --help          show this help
 
-Without --with-tui/--no-tui or --with-netenv/--no-netenv, the host keeps its
-current choice.
+Without --with-tui/--no-tui, --with-textfsm/--no-textfsm, or
+--with-netenv/--no-netenv, the host keeps its current choice.
 
 Environment:
   UV                  path to the uv binary (default: the uv of the previous
@@ -109,6 +115,8 @@ while [ $# -gt 0 ]; do
     --data-dir) DATA_DIR=${2:?--data-dir needs a directory}; shift ;;
     --with-tui) WITH_TUI=1 ;;
     --no-tui) WITH_TUI=0 ;;
+    --with-textfsm) WITH_TEXTFSM=1 ;;
+    --no-textfsm) WITH_TEXTFSM=0 ;;
     --with-netenv) WITH_NETENV=1 ;;
     --no-netenv) WITH_NETENV=0 ;;
     --no-store) CREATE_STORE=0 ;;
@@ -157,10 +165,26 @@ fi
 UV_BIN=$(cd "$(dirname "$UV")" && pwd)/$(basename "$UV")
 case $UV_BIN in *"'"*) die "the uv path cannot contain a single quote: $UV_BIN" ;; esac
 
+# The extras of the installed axlib requirement, from the line uv writes in
+# the project's pyproject.toml: "axlib[textfsm,tui]" gives textfsm,tui.
+installed_extras() {
+    sed -n 's/.*"axlib\[\([^]]*\)\].*/\1/p' "$PREFIX/pyproject.toml" 2>/dev/null \
+        | tr -d ' ' | head -n 1
+}
+has_extra() {
+    case ",$(installed_extras)," in
+    *",$1,"*) return 0 ;;
+    *) return 1 ;;
+    esac
+}
+
 # Options not given and not recorded keep what the host has, so the first run
 # of this installer on a host set up by an older one changes nothing unasked.
 if [ -z "$WITH_TUI" ]; then
-    if grep -qs '"axlib\[tui\]' "$PREFIX/pyproject.toml"; then WITH_TUI=1; else WITH_TUI=0; fi
+    if has_extra tui; then WITH_TUI=1; else WITH_TUI=0; fi
+fi
+if [ -z "$WITH_TEXTFSM" ]; then
+    if has_extra textfsm; then WITH_TEXTFSM=1; else WITH_TEXTFSM=0; fi
 fi
 if [ -z "$WITH_NETENV" ]; then
     if [ -e /etc/profile.d/axlib-netenv.sh ]; then WITH_NETENV=1; else WITH_NETENV=0; fi
@@ -217,13 +241,21 @@ fi
 # editable workspace member tied to wherever the tarball was unpacked.
 REQUIREMENT="./releases/$(basename "$WHEEL")"
 EXTRAS=()
-[ "$WITH_TUI" -eq 1 ] && EXTRAS=(--extra tui)
-REMOVE_TUI=0
-if [ "$WITH_TUI" -eq 0 ] && grep -qs '"axlib\[tui\]' "$PREFIX/pyproject.toml"; then
-    REMOVE_TUI=1
+UNWANTED=()
+if [ "$WITH_TUI" -eq 1 ]; then
+    EXTRAS+=(--extra tui)
+elif has_extra tui; then
+    UNWANTED+=("the credential manager (axlib[tui])")
+fi
+if [ "$WITH_TEXTFSM" -eq 1 ]; then
+    EXTRAS+=(--extra textfsm)
+elif has_extra textfsm; then
+    UNWANTED+=("show-command parsing (axlib[textfsm])")
+fi
+if [ "${#UNWANTED[@]}" -gt 0 ]; then
     # uv add keeps the extras of an existing requirement, so drop it first.
     # --no-sync leaves .venv alone until the commands below update it.
-    say "Removing the credential manager (axlib[tui])"
+    for part in "${UNWANTED[@]}"; do say "Removing $part"; done
     (cd "$PREFIX" && "$UV" remove --quiet --no-sync axlib)
 fi
 say "Installing $REQUIREMENT ${EXTRAS[*]-} into $PREFIX/.venv"
@@ -232,8 +264,8 @@ say "Installing $REQUIREMENT ${EXTRAS[*]-} into $PREFIX/.venv"
 (cd "$PREFIX" && "$UV" add --quiet --upgrade-package axlib --reinstall-package axlib \
     "$REQUIREMENT" ${EXTRAS[@]+"${EXTRAS[@]}"})
 # uv add only installs; uv sync also uninstalls what uv.lock no longer lists
-# (textual, rich, and their dependencies).
-if [ "$REMOVE_TUI" -eq 1 ]; then
+# (textual and rich, or textfsm and ntc-templates, and their dependencies).
+if [ "${#UNWANTED[@]}" -gt 0 ]; then
     (cd "$PREFIX" && "$UV" sync --quiet)
 fi
 
@@ -252,6 +284,14 @@ install -d -o root -g "$GROUP" -m 2750 "$CONFIG_DIR"
 # setgid (2xxx) makes new files inherit the group; 2770 lets group members
 # write, which SQLite needs to create its journal beside the database.
 install -d -o root -g "$GROUP" -m 2770 "$DATA_DIR"
+# The team's own TextFSM templates, searched before ntc-templates because it
+# sits beside axlib.toml.  Group members may add templates (2775), and it is
+# created only once, so an administrator's chmod 2755 (root only) is kept.  It
+# is never removed: --no-textfsm uninstalls the packages, not the templates.
+if [ "$WITH_TEXTFSM" -eq 1 ] && [ ! -d "$CONFIG_DIR/textfsm" ]; then
+    say "Creating $CONFIG_DIR/textfsm for shared TextFSM templates"
+    install -d -o root -g "$GROUP" -m 2775 "$CONFIG_DIR/textfsm"
+fi
 
 if [ -e "$AXLIB_CONFIG_FILE" ]; then
     say "Keeping existing $AXLIB_CONFIG_FILE"
@@ -269,6 +309,11 @@ enabled = true
 database = "$DATA_DIR/credentials.db"
 key_file = "$CONFIG_DIR/sqlite-aes256.key"
 group = "$GROUP"
+
+# axlib parse (installed with --with-textfsm); see docs/PARSING.md.
+# [textfsm]
+# platform = "cisco_ios"              # used when --platform is not given
+# template_dirs = ["textfsm"]         # default: the textfsm directory beside this file
 EOF
     chgrp "$GROUP" "$AXLIB_CONFIG_FILE"
     chmod 0640 "$AXLIB_CONFIG_FILE"
@@ -294,6 +339,7 @@ CONFIG_DIR='$CONFIG_DIR'
 DATA_DIR='$DATA_DIR'
 CONFIG_FILE='$AXLIB_CONFIG_FILE'
 WITH_TUI='$WITH_TUI'
+WITH_TEXTFSM='$WITH_TEXTFSM'
 WITH_NETENV='$WITH_NETENV'
 CREATE_STORE='$CREATE_STORE'
 UV_BIN='$UV_BIN'
@@ -358,6 +404,14 @@ axlib $VERSION is installed.
   Libraries:     $SBIN_DIR/axuv add netmiko scrapli   (root; uv on the shared environment)
   Options:       $INSTALL_RECORD   (the next install.sh run starts from these)
   Docs:          $PREFIX/current/docs/
+EOF
+if [ "$WITH_TEXTFSM" -eq 1 ]; then
+    cat <<EOF
+  Parsing:       axlib parse -p cisco_ios -r captures/   (docs/PARSING.md)
+  Templates:     $CONFIG_DIR/textfsm/   (the team's .textfsm files, searched first)
+EOF
+fi
+cat <<EOF
 
 Next steps:
   1. Add operators to the group:   usermod -aG $GROUP <user>   (effective at next login)

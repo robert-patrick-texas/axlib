@@ -37,6 +37,7 @@ When alice next logs in, `axlib credentials network` reports `netuser=set` and
 | `/etc/axlib/axlib.toml` | Configuration (no secrets) | `root:netops 0640` |
 | `/etc/axlib/install.env` | The installer's options (see [Recorded options](#recorded-options)) | `root:root 0644` |
 | `/etc/axlib/sqlite-aes256.key` | Store encryption key | `root:netops 0640` |
+| `/etc/axlib/textfsm/` | The team's TextFSM templates for `axlib parse`; only with `--with-textfsm` (see [Shared TextFSM templates](#shared-textfsm-templates)) | `root:netops 2775` |
 | `/var/lib/axlib/` | Credential database directory | `root:netops 2770` |
 | `/var/lib/axlib/credentials.db` | Encrypted SQLite credential store | `root:netops 0660` |
 | `/etc/environment` | Adds `AXLIB_CONFIG_FILE=/etc/axlib/axlib.toml` | |
@@ -90,6 +91,7 @@ sudo ./install.sh [options]
 | `--config-dir DIR` | `/etc/axlib` | Configuration and key directory |
 | `--data-dir DIR` | `/var/lib/axlib` | Database directory |
 | `--with-tui` / `--no-tui` | off | Install or remove the full-screen credential manager (`axlib credential-tui`) |
+| `--with-textfsm` / `--no-textfsm` | off | Install or remove show-command parsing (`axlib parse`: TextFSM and the ntc-templates collection, about 5 MB), and create `/etc/axlib/textfsm` for shared templates. `--no-textfsm` keeps the templates. |
 | `--with-netenv` / `--no-netenv` | off | Install or remove the login snippet that exports `NETUSER`/`NETPASS`/`NETENABLE` in every interactive login. Read `docs/NETENV.md` first. |
 | `--no-store` / `--store` | store on | Skip, or go back to, creating and verifying the SQLite store and key. Skip it when using Redis or the text store instead. |
 
@@ -118,6 +120,7 @@ CONFIG_DIR='/etc/axlib'
 DATA_DIR='/var/lib/axlib'
 CONFIG_FILE='/etc/axlib/axlib.toml'
 WITH_TUI='1'
+WITH_TEXTFSM='1'
 WITH_NETENV='0'
 CREATE_STORE='1'
 UV_BIN='/usr/local/bin/uv'
@@ -136,6 +139,9 @@ To change an option, run the installer again with the new option rather than
 editing the file. On a host installed by an older installer that wrote no
 record, the first run without `--with-tui`/`--no-tui` or
 `--with-netenv`/`--no-netenv` keeps the TUI and the login snippet as they are.
+The same goes for a record written before `--with-textfsm` existed: the first
+run without `--with-textfsm`/`--no-textfsm` keeps parsing installed or not
+installed, as it finds it.
 
 ## What the installer does
 
@@ -151,8 +157,9 @@ record, the first run without `--with-tui`/`--no-tui` or
    its wheel, and adds the wheel to the `/opt/shared/axlib` uv project with
    `uv add`. `uv.lock` records the exact versions installed.
 5. Links `/usr/local/bin/axlib` and copies `axuv` to `/usr/local/sbin`.
-6. Creates `/etc/axlib` and `/var/lib/axlib`, and writes `axlib.toml` **only
-   if it does not already exist**.
+6. Creates `/etc/axlib` and `/var/lib/axlib` (and, with `--with-textfsm`,
+   `/etc/axlib/textfsm` if it is missing), and writes `axlib.toml` **only if
+   it does not already exist**.
 7. Records its options in `/etc/axlib/install.env`, and sets
    `AXLIB_CONFIG_FILE` for all logins.
 8. Runs `axlib credential-db init --generate-key` for a new store. For an
@@ -173,10 +180,16 @@ enabled = true
 database = "/var/lib/axlib/credentials.db"
 key_file = "/etc/axlib/sqlite-aes256.key"
 group = "netops"
+
+# axlib parse (installed with --with-textfsm); see docs/PARSING.md.
+# [textfsm]
+# platform = "cisco_ios"              # used when --platform is not given
+# template_dirs = ["textfsm"]         # default: the textfsm directory beside this file
 ```
 
 Edit it to add a shared fallback account, Redis caching, or the encrypted text
-store. `docs/CREDENTIALS.md` describes every option.
+store. `docs/CREDENTIALS.md` describes every option. Uncomment `[textfsm]` to
+give every operator a default platform for `axlib parse`.
 
 ## For administrators: maintaining the shared environment
 
@@ -222,6 +235,31 @@ axlib credential-db add --service alice --set netuser=alice --prompt netpass --p
 Operators can also add and update their own records with
 `axlib credential-db add --service "$USER" ...`, or with `axlib credential-tui`
 if you installed with `--with-tui`.
+
+### Shared TextFSM templates
+
+With `--with-textfsm`, every operator's `axlib parse` searches
+`/etc/axlib/textfsm` before the ntc-templates collection, because it sits
+beside `axlib.toml`. Nothing needs configuring. A template file named after the
+platform and the command, such as `cisco_ios_show_ip_pim_neighbor.textfsm`,
+works as soon as it is copied in. `docs/PARSING.md` explains how to write one.
+
+The directory is `root:netops` with mode `2775`, so members of `netops` can
+add templates and new files stay in the group. For root-only changes:
+
+```bash
+chmod 2755 /etc/axlib/textfsm      # the installer keeps a mode you set
+```
+
+`/etc/axlib` itself is `2750`, so the templates are visible only to `netops`
+members, like the rest of the configuration. `--no-textfsm` removes the
+packages but never the templates. Keep the directory in git, as described in
+[Keeping a record of changes](#keeping-a-record-of-changes), to see who
+changed a template and when:
+
+```bash
+cd /etc/axlib/textfsm && git init && git add -A && git commit -m "Shared TextFSM templates"
+```
 
 ### Adding libraries for everyone (netmiko, scrapli, ...)
 

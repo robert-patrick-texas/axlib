@@ -62,3 +62,20 @@ def write_store_config(
 def store_settings(tmp_path: Path) -> CredentialSettings:
     """Settings for uninitialized SQLite and text-file stores in ``tmp_path``."""
     return load_settings(write_store_config(tmp_path), environ={})
+
+
+@pytest.fixture
+def clean_parse_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hide the developer's own axlib parse settings from a test.
+
+    ``axlib parse`` reads its platform and template directories from these
+    variables and from the configuration file ``AXLIB_CONFIG_FILE`` names, so
+    tests that rely on the defaults must not see a real setup.
+    """
+    for name in (
+        "AXLIB_CONFIG_FILE",
+        "AXLIB_TEXTFSM_PLATFORM",
+        "AXLIB_TEXTFSM_TEMPLATES",
+        "NTC_TEMPLATES_DIR",
+    ):
+        monkeypatch.delenv(name, raising=False)

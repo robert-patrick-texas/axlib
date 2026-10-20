@@ -18,6 +18,7 @@ Axlib is an educational Python package for Network Operations staff building aut
 - Every record may carry a short, non-secret note (owner, purpose, expiry) that the TUI and `list` show and lookups ignore.
 - `axlib netenv-set` / `axlib netenv-clear` load `NETUSER`, `NETPASS`, and `NETENABLE` into an operator's shell at SSH login, and clear them again.
 - `axlib radius` checks a username and password against a RADIUS server, as a network device would, and reports Accept, Reject, or Challenge.
+- `axlib parse` parses show-command output with TextFSM (the ntc-templates collection plus your own `.textfsm` files), and `axlib parse diff` compares collections taken before and after a change record by record, so neighbors listed in another order or hold times that ticked down are not reported as changes.
 
 ## Install
 
@@ -33,6 +34,12 @@ Add the optional full-screen credential manager as well:
 uv add 'axlib[tui]'
 ```
 
+Add show-command parsing (`axlib parse`):
+
+```bash
+uv add 'axlib[textfsm]'
+```
+
 To install axlib for every operator on a shared Linux host (a shared Python in `/opt/shared/python`, axlib in `/opt/shared/axlib`, and a ready `netops` credential store), unpack a release tarball and run its installer:
 
 ```bash
@@ -42,7 +49,7 @@ sudo ./axlib-<version>/install.sh
 
 The installer records its options in `/etc/axlib/install.env`, so the `axlib` command finds `/etc/axlib/axlib.toml` without `--config`, and upgrades need no options. Administrators add libraries such as netmiko for every script with `sudo axuv add netmiko`; `axuv` runs uv on the shared environment with the installer's settings. See `docs/INSTALL.md` for options, upgrades, rollback, and backups.
 
-Runtime dependencies are limited to `cryptography` and `redis`. Redis is imported only when caching is enabled. The optional `tui` extra adds `textual` and `rich`.
+Runtime dependencies are limited to `cryptography` and `redis`. Redis is imported only when caching is enabled. The optional `tui` extra adds `textual` and `rich`, and the optional `textfsm` extra adds `textfsm` and `ntc-templates`.
 
 ## Existing automation API
 
@@ -126,6 +133,34 @@ print(result.reply.code_name, result.accepted)
 
 The exit status is 0 for Access-Accept, 1 for Reject or Challenge, 2 for errors, and 3 when no reply arrives. `--json` prints the full result. The module uses only the standard library and is checked against the RFC 2865 test vectors. See `docs/RADIUS.md`.
 
+## Show-command parsing
+
+Collect show commands before and after a maintenance window, then see only what changed:
+
+```bash
+axlib parse -p cisco_ios -r captures/before/ -o before.json
+axlib parse diff -p cisco_ios -r before.json captures/after/
+```
+
+```text
+sw1: show cdp neighbors
+  - local_interface=GigabitEthernet1/0/5 neighbor_name=ap-lobby-01
+  ~ local_interface=GigabitEthernet1/0/48 neighbor_name=core-rtr-01.example.net
+      neighbor_interface: GigabitEthernet0/0/1 -> GigabitEthernet0/0/2
+```
+
+Captures can be session logs with prompts (`sw1#show cdp neighbors`), script output with bare commands, whole directory trees (`-r`), or output piped from `ssh` (`--command`). Abbreviated commands such as `sh cdp nei` are recognized. Records are sorted by what identifies them, interface names are spelled one way (`Gig 1/0/48`, `Gi1/0/48` → `GigabitEthernet1/0/48`), and fields that change on every run are dropped. To add a template, put `cisco_ios_show_ip_pim_neighbor.textfsm` (platform, then the command) in a template directory: `--template-dir`, `AXLIB_TEXTFSM_TEMPLATES`, or `/etc/axlib/textfsm` on a shared server. Template directories are searched before ntc-templates.
+
+```python
+from axlib.parse import parse_output
+
+records = parse_output(
+    conn.send_command("show cdp neighbors"), "show cdp neighbors", "cisco_ios"
+)
+```
+
+See `docs/PARSING.md`.
+
 ## Shared server example
 
 ```toml
@@ -176,6 +211,7 @@ See `docs/TEXT_FILTERS.md` for filter semantics.
 - `docs/CREDENTIAL_TUI.md` — operator guide for the optional full-screen credential manager.
 - `docs/NETENV.md` — loading credentials into SSH sessions with `netenv-set` / `netenv-clear`: setup, warnings, and troubleshooting.
 - `docs/RADIUS.md` — checking a login against a RADIUS server with `axlib radius`: options, exit status, Python API, how it works, and troubleshooting.
+- `docs/PARSING.md` — parsing show commands with `axlib parse` and comparing collections with `axlib parse diff`: capture formats, output, adding your own TextFSM templates, Python API, and troubleshooting.
 - `docs/CREDENTIAL_FILE.md` — full encrypted text-store API with examples for every method.
 - `docs/SQLITE_CREDENTIALS.md` — full SQLite API with examples for every method.
 - `docs/TEXT_FILTERS.md` — pipeline and Python text-processing examples.
