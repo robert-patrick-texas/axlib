@@ -2,6 +2,101 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.6
+
+### Overview
+
+This release adds show-command parsing. `axlib parse` turns the output of commands such as `show cdp neighbors` into records with TextFSM templates: the ntc-templates collection plus the team's own `.textfsm` files. `axlib parse diff` compares a collection taken before a maintenance window with one taken after it, record by record. Neighbors listed in a different order and hold times that ticked down are not reported. Removed neighbors, moved ports, and changed fields are. Parsing is an optional install, `uv add 'axlib[textfsm]'`, or `install.sh --with-textfsm` on a shared host. Nothing else changes.
+
+### Before and after a change
+
+```bash
+axlib parse -p cisco_ios -r captures/before/ -o before.json
+axlib parse diff -p cisco_ios before.json captures/after/
+```
+
+```text
+sw1: show cdp neighbors
+  - local_interface=GigabitEthernet1/0/5 neighbor_name=ap-lobby-01
+  ~ local_interface=GigabitEthernet1/0/48 neighbor_name=core-rtr-01.example.net
+      neighbor_interface: GigabitEthernet0/0/1 -> GigabitEthernet0/0/2
+sw1: show ip pim neighbor
+  ~ neighbor=10.20.0.2 interface=Vlan20
+      mode: "DR S P G" -> "S P G"
+...
+9 commands compared: 7 changed, 0 only before, 0 only after, 2 unchanged
+```
+
+On the sample captures in `examples/parse`, `diff -u` of one switch's logs shows 110 changed lines and of the other's 6. `axlib parse diff` reports four real changes on the first switch and nothing on the second, whose neighbors were only listed in another order.
+
+- **Captures** can be session logs with IOS, NX-OS, EOS, IOS-XR, or Junos prompts, script output with bare `show` or `display` commands, files and directory trees (`-r`), output piped from `ssh` (`--command`), or another header format described with `--marker`. Pager prompts, IOS timestamp lines, and Junos `{master:0}` lines are removed first. `axlib parse split` shows how a capture is cut into commands.
+- **Abbreviations** such as `sh cdp nei` are recognized, and they pair with `show cdp neighbors` in the other collection.
+- **Records are made comparable.** They are sorted by what identifies them, such as the local interface and neighbor. Interface names are spelled one way (`Gig 1/0/48`, `Gi1/0/48` → `GigabitEthernet1/0/48`). Fields that change on every run, such as hold time, are dropped. A template's `Key` fields identify its records; built-in profiles cover CDP and LLDP neighbors (brief and detail), IP interface brief, and interface status.
+- **Output** is a JSON snapshot by default, which `axlib parse diff` reloads, or JSON lines, or tables. `axlib parse diff --json` prints the comparison as one object.
+- **Exit status** for `axlib parse`: 0 parsed, 1 a command failed or nothing was parsed, 2 error. For `axlib parse diff`, as for `diff`: 0 no differences, 1 differences, 2 trouble.
+
+The commands are also available as `axlib-parse` and `python -m axlib.parse`. `docs/PARSING.md` is the operator guide.
+
+### The team's own templates
+
+A template needs only a file name: put `<platform>_<command>.textfsm`, such as `cisco_ios_show_ip_pim_neighbor.textfsm`, in a template directory. No index file is needed; commands with arguments still need an ntc-templates style `index`. Directories are searched in this order:
+
+1. `--template-dir DIR` (repeatable)
+2. `AXLIB_TEXTFSM_TEMPLATES`
+3. `template_dirs` in the new `[textfsm]` table of `axlib.toml`, or `textfsm/` beside `axlib.toml` when it has none. On a shared host this is `/etc/axlib/textfsm`.
+4. ntc-templates, or `NTC_TEMPLATES_DIR`
+
+A template with the same name as an ntc template replaces it, however the command is abbreviated in the capture. `axlib parse templates -p cisco_ios sh ip pim nei` shows which template parses a command and where it came from. `[textfsm]` can also set a default `platform`, as can `AXLIB_TEXTFSM_PLATFORM`.
+
+### Python API
+
+```python
+from axlib.parse import parse_output
+
+records = parse_output(
+    conn.send_command("show cdp neighbors"), "show cdp neighbors", "cisco_ios"
+)
+```
+
+`parse_output()` suits netmiko and scrapli scripts. `parse_text()`, `parse_paths()`, and `compare()` do what the commands do, and `TemplateCatalog`, `split_capture()`, `canonical_interface()`, and `normalize_records()` are public for scripts that need one step.
+
+### Shared host
+
+```bash
+sudo ./axlib-1.0.6/install.sh --with-textfsm
+```
+
+- `--with-textfsm` installs the extra and creates `/etc/axlib/textfsm`, owned by `root:netops` with mode `2775`, so any member of `netops` can add templates. Run `chmod 2755 /etc/axlib/textfsm` to allow only root; later runs keep the mode. The choice is recorded as `WITH_TEXTFSM` in `/etc/axlib/install.env`, so upgrades keep it.
+- `--no-textfsm` removes the packages and keeps the templates.
+- Removing one optional part now keeps the other. Before, the installer recognized only the credential manager installed on its own.
+- A new `axlib.toml` includes a commented `[textfsm]` table. An existing one is not changed and needs no edit: `/etc/axlib/textfsm` is found because it is beside it.
+
+### Compatibility
+
+- New package and commands only: `axlib.parse`, `axlib parse`, and `axlib-parse`. No existing command, API, storage format, or `ax.getkeys()` behavior changes.
+- No new required dependencies. The optional `textfsm` extra adds `textfsm` and `ntc-templates`, about 5 MB of pure Python, both Apache-2.0. Without it, `axlib parse` explains how to install it and exits 2. Splitting captures and comparing two saved snapshots need only the standard library.
+- Upgrading a shared host with `sudo ./axlib-1.0.6/install.sh` keeps its options and does not add parsing; add `--with-textfsm` for that.
+- Rolling back to 1.0.5 as described in `docs/INSTALL.md` works. uv warns that the 1.0.5 wheel has no `textfsm` extra, and the parsing packages stay installed but unused.
+
+### Validation
+
+Validated on Python 3.14.3 and, from the built wheel, on Python 3.11.16:
+
+```text
+Ruff format and lint (all rules, including docs code): passed
+ty static type check:                                  passed
+Educational docstring audit:                           passed
+Main pytest suite:                                     336 passed
+Full suite from the built wheel, Python 3.11 and 3.14: 336 passed
+Installer in an Ubuntu 26.04 container, from the
+  release tarballs: 1.0.5 with the TUI upgraded to
+  1.0.6 (options, configuration, and records kept),
+  --with-textfsm added, a shared template used,
+  before/after diff of the examples, the documented
+  rollback to 1.0.5, and the upgrade again:            passed
+shellcheck of install.sh:                              passed
+```
+
 ## 1.0.5
 
 ### Overview

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.6 - 2026-10-20
 
 - Added `axlib parse` (also `axlib-parse` and `python -m axlib.parse`), which parses show-command output with TextFSM templates into records. Captures can be session logs with prompts (IOS, NX-OS, EOS, IOS-XR, and Junos styles), script output with bare `show`/`display` commands, an operator's own header format (`--marker`), files and directory trees (`-r`, `--glob`), or piped output (`--command`). Pager prompts, carriage returns, IOS exec-prompt timestamps, and Junos `{master:0}`/`[edit]` lines are removed. Output is a JSON snapshot (default), JSON lines, or aligned tables. Commands with no template, or with `|`-filtered output, are skipped; a template that rejects its output is reported as a failure. Exit status: 0 parsed, 1 a command failed or nothing was parsed, 2 error.
 - Records are made comparable: they are sorted by their key in natural order, interface names are spelled one way (`Gig 1/0/48`, `Gi1/0/48` → `GigabitEthernet1/0/48`), and volatile fields such as CDP/LLDP hold time are dropped. The key comes from the template's `Key` values, else from built-in profiles for CDP and LLDP neighbors (brief and detail), IP interface brief, and interface status. `--raw` returns records exactly as the template does, and `--ignore FIELD` drops a field.
