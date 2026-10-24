@@ -175,6 +175,25 @@ def _closed_udp_port() -> int:
         return sock.getsockname()[1]
 
 
+@pytest.fixture
+def ipv4_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve host names to IPv4 addresses only, where the fake server listens.
+
+    ``authenticate()`` uses the first address a name resolves to.  Whether
+    ``localhost`` gives ``127.0.0.1`` or ``::1`` first depends on the host's
+    ``/etc/hosts`` (GitHub's runners give ``::1``), so tests that pass a name
+    fix the answer instead of depending on the machine they run on.
+    """
+    resolve = socket.getaddrinfo
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, port, **options: resolve(
+            host, port, **{**options, "family": socket.AF_INET}
+        ),
+    )
+
+
 # --- packet encoding, checked against RFC 2865 section 7.1 -----------------
 
 
@@ -322,6 +341,7 @@ def test_authenticate_accept() -> None:
     assert dict(_attributes(server.requests[0][20:]))[4] == bytes((127, 0, 0, 1))
 
 
+@pytest.mark.usefixtures("ipv4_names")
 def test_authenticate_reject_is_a_result_not_an_error() -> None:
     with fake_server() as server:
         result = authenticate("localhost", "alice", "wrong", SECRET, port=server.port)
@@ -441,6 +461,7 @@ def test_cli_accept_json_with_env_and_secret_file(tmp_path: Path) -> None:
     assert PASSWORD not in out
 
 
+@pytest.mark.usefixtures("ipv4_names")
 def test_cli_reject_text_with_stdin_and_prompt() -> None:
     prompts: list[str] = []
 
