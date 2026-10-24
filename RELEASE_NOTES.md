@@ -2,6 +2,82 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.8
+
+### Overview
+
+`axlib radius` now works over both IPv4 and IPv6: a server name with an IPv6 and an IPv4 address is tried at each until one answers, and `-4` or `-6` picks one. By default it sends one request per address and waits one second for it. The release also changes how axlib is built and published. GitHub Actions checks every push, and this is the first release published by a workflow: the tarball and wheel on GitHub and PyPI are the files that workflow built and tested, and PyPI received them by trusted publishing, without a PyPI token. No storage format changes.
+
+### RADIUS over IPv4 and IPv6
+
+```console
+$ axlib radius radius1.example.net -u alice --secret-file /etc/axlib/radius.secret
+Password for alice:
+radius: 2001:db8::10 port 1812 did not answer: no reply after 1 attempt(s) of 1 s
+Access-Accept from radius1.example.net (192.0.2.10) port 1812 for 'alice' in 4.1 ms (attempt 1)
+```
+
+- **Every address is tried:** the server's addresses are tried in the order the host's resolver prefers, usually IPv6 first. An address that reports the port closed, cannot be reached, or stays silent through every retry passes the check on to the next one. Before, only the first address was tried, so a server listening on IPv4 only was reported as not listening when its name resolved to IPv6 first. A reply that fails verification still ends the check at once, since it means the shared secrets differ.
+- **`-4` and `-6`** (`ip_version=4` or `6` in `authenticate()`) use one IP version only, which skips the wait for an address the server ignores.
+- **Shorter defaults:** one attempt of one second per address (`--timeout 1`, `--retries 0`), instead of three attempts of three seconds. A name whose IPv6 and IPv4 addresses are both silent gets one request at each and gives up after two seconds. `--timeout` and `--retries` (`timeout=` and `retries=` in Python) still set both.
+- **What did not answer is reported:** each address passed over is noted on standard error, and the result on standard output keeps its format. `RadiusResult.failed_addresses` and `failed_addresses` in `--json` carry the same list. When no address answers, silence everywhere is still exit status 3; otherwise the exit status is 2 and the message names each address and what happened there.
+- **IPv6 in replies:** `Framed-IPv6-Address`, `Framed-IPv6-Prefix`, and `Delegated-IPv6-Prefix` are shown as `2001:db8::7` and `2001:db8::/64` instead of hex.
+
+A RADIUS server identifies its clients by source address, so an address that stays silent is often one the server does not list: a server that knows this host by its IPv4 address only ignores requests that arrive over IPv6. `docs/RADIUS.md` ("IPv4 and IPv6") explains the order and the timing.
+
+### Continuous integration
+
+Every push to `main` and every pull request runs:
+
+- `make check` (Ruff, ty, the docstring audit, and the test suite) on Python 3.11, 3.12, 3.13, and 3.14.
+- `make docs`, which fails on a broken link, and `uv build` with `twine check --strict`.
+- `install.sh` end to end in an Ubuntu 26.04 container: a fresh install with every optional part, and an upgrade from the previous release with the rollback from `docs/INSTALL.md` and a second upgrade.
+
+The first runs found two problems that the development host hid. GitHub's runners resolve `localhost` to `::1` first, which exposed the single-address RADIUS check above, and they have no `netops` group, which one test assumed. Dependabot proposes updates to the workflows' pinned actions once a week.
+
+### Releases
+
+Pushing a `v<version>` tag runs `.github/workflows/release.yml`. It repeats every check on the tagged commit, confirms that the tag matches the version in `pyproject.toml` and is on `main`, then creates the GitHub release with its notes from `RELEASE_NOTES.md`, uploads the same files to PyPI, and deploys the documentation site. Each PyPI file carries a signed attestation naming the workflow run that built it. `docs/DEVELOPMENT.md` describes the steps and the one-time setup.
+
+For anyone working on axlib:
+
+- **`make install-test`** runs `install.sh` in a disposable container; `FROM=<old tarball>` tests an upgrade, a rollback, and a second upgrade (`tools/installer-test.sh`).
+- **`make publish` is removed.** Releases are published only by the workflow.
+- **`make check` requires release notes:** it fails unless `RELEASE_NOTES.md` has a section and `CHANGELOG.md` a dated heading for the version in `pyproject.toml`.
+
+### Compatibility
+
+- **`axlib radius` defaults:** `--timeout` is 1 second (was 3) and `--retries` is 0 (was 2), so a silent server is reported after 1 second instead of 9, per address. A server that takes over a second to answer, or a path that loses packets, now needs `--timeout` or `--retries`; `--timeout 3 --retries 2` restores the old wait. Scripts that relied on the resends should pass `--retries` explicitly.
+- **`axlib radius` with a host name** tries each of its addresses, so each silent address adds `--timeout` times the number of attempts. Use `-4` or `-6`, or an IP address, to try one address only.
+- **`axlib radius` error text:** a closed port is reported as `cannot reach SERVER port PORT: the server's host answered that nothing is listening ...` instead of the same sentence without the server and port. A server name all of whose addresses fail with at least one error exits 2 (`RadiusError`), not 3. Addresses passed over are printed on standard error even when the check succeeds.
+- **No storage format changes.** A shared host upgrades in place with `sudo ./axlib-1.0.8/install.sh`, keeping its options, and rolling back to 1.0.7 as `docs/INSTALL.md` describes works.
+- **macOS is no longer listed** in the package classifiers, because nothing tests axlib there. Nothing in the code changed for macOS.
+
+### Validation
+
+Before tagging, on Python 3.14.3 locally and in GitHub Actions on the commit before this one:
+
+```text
+make check, locally (Ruff, ty, docstring audit, tests):  480 passed
+Test suite as a non-root user with no netops group and
+  localhost on ::1 first (Ubuntu 26.04 container):       477 passed, 3 skipped
+CI (GitHub Actions), make check on CPython 3.11.17,
+  3.12.3, 3.13.17, and 3.14.9:                           480 passed on each
+CI: make docs, the build, and the installer, fresh and
+  upgrading from 1.0.6 with the rollback:                passed
+RADIUS defaults, localhost on ::1 and 127.0.0.1 with
+  both silent: requests sent, time to give up:           1 per address, 2.0 s
+twine check --strict of the built tarball and wheel:     passed
+Installer in an Ubuntu 26.04 container: the 1.0.7
+  release tarball with the TUI upgraded to this build
+  adding parsing and Markdown (options kept), the
+  documented rollback to 1.0.7, and the upgrade again:   passed
+actionlint on the workflows:                             no errors
+zizmor on the workflows:                                 no security findings
+```
+
+The release workflow ran every CI check again on the tag before publishing.
+
 ## 1.0.7
 
 ### Overview

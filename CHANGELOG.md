@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.8 - 2026-10-24
 
 - `axlib radius` works over IPv4 and IPv6. A server name with several addresses, such as an IPv6 and an IPv4 address, is tried at each in turn, in the order the resolver prefers, until one answers. Before, only the first address was tried, so a server listening on IPv4 only was reported as not listening when its name resolved to IPv6 first (as `localhost` does on GitHub's runners, which is how CI found it). An address is passed over when it reports the port closed, cannot be reached, or stays silent through every retry; a reply that fails verification still ends the check at once.
 - Changed the `axlib radius` defaults to one attempt of one second per address: `--timeout` 1 (was 3) and `--retries` 0 (was 2), also `DEFAULT_TIMEOUT` and `DEFAULT_RETRIES` and the defaults of `authenticate()`. A name whose IPv6 and IPv4 addresses are both silent gets one request at each and gives up after two seconds. `--timeout 3 --retries 2` restores the old wait.
