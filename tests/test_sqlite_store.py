@@ -382,11 +382,13 @@ def test_sqlite_store_rotate_key_reencrypts_and_replaces_key_file(
 def test_sqlite_store_rotate_key_requires_key_file_not_environment(
     tmp_path: Path,
 ) -> None:
-    key = generate_sqlite_key_file(tmp_path / "unused.key", group=_current_group())
+    group = _current_group()
+    key = generate_sqlite_key_file(tmp_path / "unused.key", group=group)
     settings = CredentialSettings(
         sqlite_enabled=True,
         sqlite_database=tmp_path / "credentials.db",
         sqlite_key=key,
+        sqlite_group=group,
     )
     store = SQLiteCredentialStore(settings)
     store.initialize()
