@@ -27,7 +27,6 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Operating System :: POSIX :: Linux",
-    "Operating System :: MacOS",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -187,9 +186,8 @@ ignore = [
 author = "Robert Patrick"
 
 [tool.ruff.lint.per-file-ignores]
-# A standalone script invoked as `python tools/audit_docstrings.py`, not a
-# package; it is never imported.
-"tools/audit_docstrings.py" = ["INP001"]
+# Standalone scripts invoked as `python tools/<script>.py`, not a package.
+"tools/*.py" = ["INP001"]
 # uv inline-metadata (PEP 723) launchers run as `scripts/netenv-set`; they are
 # executables, not importable modules, so hyphenated names are intentional.
 "scripts/*" = ["INP001", "N999"]

@@ -1,0 +1,18 @@
+# Propose updates to the actions the workflows use.  The workflows pin each
+# action to a commit hash with its version in a comment; Dependabot updates
+# both together, in one pull request for all of them each week.  Python
+# dependencies are not included: ruff is pinned exactly on purpose (see
+# pyproject.toml), and `uv lock --upgrade` stays a deliberate step.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Wait a week after a release before proposing it, so a compromised or
+    # broken release is usually found and withdrawn first.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

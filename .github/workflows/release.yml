@@ -1,0 +1,113 @@
+# Publish a release when its tag is pushed (docs/DEVELOPMENT.md, "Releasing"):
+#
+#   git tag -a "v$(uv version --short)" -m "axlib $(uv version --short)"
+#   git push origin main "v$(uv version --short)"
+#
+# The jobs run in this order, each only after the ones before it pass:
+#   ci      every check in ci.yml, on the tagged commit.  Its build job makes
+#           the only tarball and wheel; the later jobs publish those files.
+#   verify  the tag names the version in pyproject.toml, and its commit is on
+#           main.  (make check has already confirmed that RELEASE_NOTES.md has
+#           a section and CHANGELOG.md a dated heading for the version.)
+#   github  the GitHub release, with both files and the version's section of
+#           RELEASE_NOTES.md as its notes.
+#   pypi    the same files on PyPI by trusted publishing: PyPI accepts uploads
+#           from this workflow in the pypi environment, so no token is stored
+#           anywhere.  The environment allows only v* tags.
+#   docs    the documentation site, built from the tag (docs.yml).
+#
+# If a job fails, fix the cause and choose "Re-run failed jobs" on the run;
+# the jobs that passed are not repeated.
+#
+# Actions are pinned to full commit hashes (the version is in the comment).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Every branch's history, to check that the tag's commit is on main.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Check the tag
+        run: |
+          version=$(uv version --short)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $version in pyproject.toml"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main"
+            exit 1
+          fi
+
+  github:
+    name: GitHub release
+    needs: [ci, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and attach its files
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          python3 tools/release_notes.py "$version" > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            "dist/axlib-$version.tar.gz" "dist/axlib-$version-py3-none-any.whl" \
+            --verify-tag --title "axlib $version" --notes-file "$RUNNER_TEMP/notes.md"
+
+  pypi:
+    name: PyPI
+    needs: github
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/axlib/
+    permissions:
+      # The workflow's OpenID Connect token, which PyPI exchanges for an
+      # upload token that expires after the upload.
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      # Checks the metadata, uploads dist/, and publishes signed attestations
+      # that tie each file to this workflow run.
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  docs:
+    needs: pypi
+    # What docs.yml's deploy job needs; a called workflow gets no more than
+    # the calling job grants.
+    permissions:
+      contents: read # check out the tag
+      pages: write # deploy to GitHub Pages
+      id-token: write # prove to Pages which workflow is deploying
+    uses: ./.github/workflows/docs.yml

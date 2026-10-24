@@ -1,7 +1,9 @@
 # Build the documentation with `axlib md2html` (make docs) and publish it to
-# GitHub Pages, https://robert-patrick-texas.github.io/axlib/, each time a
-# release is published.  The pages are built from the release's tag, so they
-# describe that release.  "Run workflow" on the Actions tab publishes again by
+# GitHub Pages, https://robert-patrick-texas.github.io/axlib/.  The release
+# workflow (release.yml) calls this as its last job, so the pages are built
+# from the release's tag and describe that release.  (A release created by a
+# workflow does not trigger other workflows, so this cannot simply run on
+# "release published".)  "Run workflow" on the Actions tab publishes again by
 # hand, from the branch or tag chosen there.
 #
 # Actions are pinned to full commit hashes (the version is in the comment), so
@@ -9,8 +11,7 @@
 name: Publish documentation
 
 on:
-  release:
-    types: [published]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -29,7 +30,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - name: Build the site with axlib md2html
         # GITHUB_REF_NAME is the release tag (or the branch of a manual run);
         # each page's footer links to its Markdown source at that ref.

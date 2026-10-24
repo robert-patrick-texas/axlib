@@ -12,4 +12,4 @@ include examples/netenv/netenv.sh
 recursive-include examples/parse *.md *.log *.txt *.textfsm
 include scripts/netenv-set scripts/netenv-clear scripts/axuv
 recursive-include tests *.py
-recursive-include tools *.py
+recursive-include tools *.py *.sh

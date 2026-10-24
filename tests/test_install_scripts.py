@@ -4,8 +4,8 @@
 """Static checks for the shell scripts that install and maintain a shared host.
 
 ``install.sh`` needs root and a network, so it is exercised end to end in a
-container rather than here; these tests catch syntax errors and the common
-shell mistakes that shellcheck reports.
+container by ``tools/installer-test.sh`` rather than here; these tests catch
+syntax errors and the common shell mistakes that shellcheck reports.
 """
 
 from __future__ import annotations
@@ -18,7 +18,11 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = [ROOT / "install.sh", ROOT / "scripts" / "axuv"]
+SCRIPTS = [
+    ROOT / "install.sh",
+    ROOT / "scripts" / "axuv",
+    ROOT / "tools" / "installer-test.sh",
+]
 
 
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda path: path.name)

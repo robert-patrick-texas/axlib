@@ -1,0 +1,113 @@
+# Check every push to main and every pull request: `make check` on each
+# supported Python, the documentation build, the package build, and install.sh
+# end to end in a container.  The release workflow (release.yml) runs this
+# same workflow on the release tag, and publishes the files its build job
+# made, so what is released is exactly what was tested.
+#
+# Actions are pinned to full commit hashes (the version is in the comment), so
+# a moved tag cannot change what runs; Dependabot (.github/dependabot.yml)
+# proposes updates.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: make check (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Report every Python version, not only the first one that fails.
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    env:
+      # Fail instead of quietly updating uv.lock when it is out of date.
+      UV_LOCKED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # python-version sets UV_PYTHON, so every `uv run` in make check uses it.
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+      - run: make check
+
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      # --strict: a broken link or #section fails the build.
+      - run: make docs
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - run: uv build
+      # The same metadata check PyPI applies to an upload.
+      - run: uvx twine check --strict dist/*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  installer:
+    name: install.sh (${{ matrix.test }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # fresh: a new host with every optional part.  upgrade: upgrade from
+        # the previous release, roll back to it, and upgrade again.
+        test: [fresh, upgrade]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The container uses the runner's uv binary, as on a developer's host.
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - name: Download the previous release
+        if: matrix.test == 'upgrade'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The previous release is the highest released version below this
+        # build's version: add this build's tag to the released tags, sort
+        # them as versions, and take the one before it.
+        run: |
+          tag="v$(uv version --short)"
+          previous=$(
+            { gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+                --exclude-drafts --exclude-pre-releases \
+                --json tagName --jq '.[].tagName'; echo "$tag"; } |
+              sort -uV | grep -F -x -B1 "$tag" | head -n 1
+          )
+          [ "$previous" != "$tag" ] || { echo "::error::no release before $tag"; exit 1; }
+          gh release download "$previous" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'axlib-*.tar.gz' --dir previous
+          echo "PREVIOUS_TARBALL=$(ls previous/axlib-*.tar.gz)" >> "$GITHUB_ENV"
+      - name: Run tools/installer-test.sh
+        run: >-
+          tools/installer-test.sh ${PREVIOUS_TARBALL:+--from "$PREVIOUS_TARBALL"}
+          "dist/axlib-$(uv version --short).tar.gz"

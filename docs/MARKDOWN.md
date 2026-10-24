@@ -307,8 +307,8 @@ axlib md2html --strict --index README.md -o site \
     README.md docs/INSTALL.md ... CHANGELOG.md
 ```
 
-`.github/workflows/docs.yml` runs `make docs` from each published release's
-tag and deploys `site/` to GitHub Pages, at
+`.github/workflows/docs.yml` runs `make docs` from each release's tag and
+deploys `site/` to GitHub Pages, at
 <https://robert-patrick-texas.github.io/axlib/>. `--strict` stops the
 publication if any link is broken. [DEVELOPMENT.md](DEVELOPMENT.md#documentation-site)
 describes the setup.

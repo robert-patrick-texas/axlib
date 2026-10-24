@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Releases are published by GitHub Actions. Pushing a `v<version>` tag runs `.github/workflows/release.yml`: every CI check on the tagged commit, then the GitHub release with the tarball, the wheel, and the version's `RELEASE_NOTES.md` section as its notes, then the same two files on PyPI by trusted publishing, so no PyPI token is stored anywhere, then the documentation site, built from the tag. `tools/release_notes.py` extracts the notes. `make publish`, which uploaded with a token, is removed. `docs/DEVELOPMENT.md` describes the steps and the one-time setup.
+- Added continuous integration, `.github/workflows/ci.yml`. Every push to `main` and every pull request runs `make check` on Python 3.11, 3.12, 3.13, and 3.14 (an out-of-date `uv.lock` is an error), `make docs`, `uv build` with `twine check --strict`, and `install.sh` end to end in a container: a fresh install, and an upgrade from the previous release with a rollback. `.github/dependabot.yml` proposes updates to the hash-pinned actions once a week.
+- Added `tools/installer-test.sh` and `make install-test` (`FROM=<old tarball>` tests an upgrade, a rollback, and a second upgrade), which run `install.sh` in a disposable Ubuntu container and check the installed release, its configuration, and each optional part. They replace the `docker run` example in `docs/DEVELOPMENT.md`.
+- Tests now check that `RELEASE_NOTES.md` has a section and `CHANGELOG.md` a dated heading for the version in `pyproject.toml`, so a release cannot be tagged without them.
+- Removed the `Operating System :: MacOS` classifier: nothing tests axlib on macOS.
+
 ## 1.0.7 - 2026-10-20
 
 - Added `axlib md2html` (also `axlib-md2html` and `python -m axlib.md2html`), which converts Markdown files to HTML pages. One file becomes a page beside it (or `-o FILE`, or standard output); several files or a folder (`-r` for subfolders) become a small site, beside the Markdown or under `-o DIR`, and standard input becomes one page. Markdown is read as GitHub reads it: CommonMark plus tables, strikethrough, bare URLs as links, task-list check boxes, and footnotes. Headings get GitHub's anchors, so `FILE.md#section` links keep working.
