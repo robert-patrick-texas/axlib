@@ -4,7 +4,8 @@
 password, the same way a switch, router, or firewall does when someone logs
 in. Use it to find out why a device login fails: whether the server rejects the
 account, the request never reaches the server, or the device and the server
-have different shared secrets. It uses only the Python standard library.
+have different shared secrets. It works over IPv4 and IPv6 and uses only the
+Python standard library.
 
 ## Quick start
 
@@ -26,19 +27,22 @@ request and the check ends with "no reply".
 ## Command line
 
 ```text
-axlib radius SERVER -u USERNAME [-p PORT] [password source] [secret source]
-             [--timeout SECONDS] [--retries N] [--nas-identifier NAME] [--json]
+axlib radius SERVER -u USERNAME [-4 | -6] [-p PORT] [password source]
+             [secret source] [--timeout SECONDS] [--retries N]
+             [--nas-identifier NAME] [--json]
 ```
 
 The same command is available as `axlib-radius` and `python -m axlib.radius`.
 
 | Option | Meaning |
 | --- | --- |
-| `SERVER` | Server host name, IPv4 address, or IPv6 address. |
+| `SERVER` | Server host name, IPv4 address, or IPv6 address. A name with several addresses is tried at each in turn (see [IPv4 and IPv6](#ipv4-and-ipv6)). |
+| `-4`, `--ipv4` | Use only the server's IPv4 addresses. |
+| `-6`, `--ipv6` | Use only the server's IPv6 addresses. |
 | `-p`, `--port` | Server UDP port (default 1812). |
 | `-u`, `--username` | User name to check (required). |
-| `--timeout` | Seconds to wait for each reply (default 3). |
-| `--retries` | Times to resend after a timeout (default 2, so 3 attempts). |
+| `--timeout` | Seconds to wait for each reply (default 1). |
+| `--retries` | Times to resend to the same address after a timeout (default 0, so one attempt per address). Raise it, or `--timeout`, for a slow or lossy path. |
 | `--nas-identifier` | `NAS-Identifier` value sent to the server (default `axlib`). Server policies sometimes match on it. |
 | `--json` | Print one JSON object instead of text. |
 
@@ -65,14 +69,57 @@ The shared secret works the same way:
 Anything typed on the command line is visible to every user on the host
 through `ps` and is kept in shell history. Use these options only in a lab.
 
+### IPv4 and IPv6
+
+An IPv4 or IPv6 address is used as given. A host name can resolve to several
+addresses, often an IPv6 and an IPv4 address. They are tried one at a time,
+in the order this host's resolver prefers (usually IPv6 first on a host with
+IPv6 connectivity; `/etc/gai.conf` changes the order on Linux), until one
+answers. The check moves on to the next address when one:
+
+- reports that nothing listens on the port (ICMP port unreachable), which
+  takes no time,
+- cannot be reached from this host at all, such as an IPv6 address on a host
+  without an IPv6 route, or
+- stays silent through every retry, which takes `--timeout` seconds for each
+  of the `--retries` plus one attempts: one second with the defaults. A name
+  with an IPv6 and an IPv4 address that are both silent gets one request at
+  each and gives up after two seconds.
+
+A reply that fails verification ends the check at once: the server answered,
+so the shared secrets differ, and another address would not change that.
+
+Each address that did not answer is noted on standard error, and the result
+on standard output keeps its usual format:
+
+```console
+$ axlib radius radius1.example.net -u alice --secret-file /etc/axlib/radius.secret
+Password for alice:
+radius: 2001:db8::10 port 1812 did not answer: no reply after 1 attempt(s) of 1 s
+Access-Accept from radius1.example.net (192.0.2.10) port 1812 for 'alice' in 4.1 ms (attempt 1)
+  Reply-Message: Welcome, alice
+  Message-Authenticator: verified
+```
+
+An address that stays silent is often one the server does not know. A RADIUS
+server identifies a client by its source address, so a server that lists this
+host by its IPv4 address only ignores requests that arrive over IPv6 (and
+the other way round). Add the other address as a client on the server, or
+use `-4` or `-6` to skip the wait. With either option, a server name without
+an address of that version is an error, `cannot resolve ... to an IPv6
+address`.
+
+The request reports the local address the operating system chose for each
+address tried: `NAS-IP-Address` over IPv4 and `NAS-IPv6-Address` over IPv6.
+
 ### Exit status
 
 | Status | Meaning |
 | --- | --- |
 | 0 | `Access-Accept`: the server accepted the username and password. |
 | 1 | `Access-Reject` or `Access-Challenge`: the server answered, but did not accept the login. |
-| 2 | Error: bad option, unreadable secret file, input that ended before the password or secret was read, name lookup failure, port closed, or a reply that failed verification. |
-| 3 | No reply after every retry. |
+| 2 | Error: bad option, unreadable secret file, input that ended before the password or secret was read, name lookup failure, port closed, or a reply that failed verification. For a name with several addresses, also when any address reported an error and none answered; the message names each address. |
+| 3 | No reply after every retry, at every address. |
 
 Results go to standard output and errors to standard error. Scripts can use
 the exit status without parsing the output:
@@ -123,9 +170,14 @@ done
       "name": "Vendor-Specific",
       "value": "vendor=9 type=1 value=shell:priv-lvl=15"
     }
-  ]
+  ],
+  "failed_addresses": []
 }
 ```
+
+`failed_addresses` lists the addresses tried before `address` that did not
+answer, each as `{"address": "2001:db8::10", "error": "no reply after 1
+attempt(s) of 1 s"}`.
 
 Select fields with `jq`, for example `axlib radius ... --json | jq -r .result`.
 
@@ -141,9 +193,10 @@ try:
         password,  # password
         secret,  # shared secret (str or bytes)
         port=1812,  # these keyword arguments show the defaults
-        timeout=3.0,
-        retries=2,
+        timeout=1.0,
+        retries=0,
         nas_identifier="axlib",
+        ip_version=None,  # 4 or 6 for one IP version only
     )
 except RadiusTimeoutError:
     print("no reply: unreachable, not a configured client, or wrong secret")
@@ -161,8 +214,10 @@ be trusted. `ValueError` is raised for invalid arguments, such as an empty
 secret, a port outside 1-65535, or a password longer than 128 bytes.
 
 The returned `RadiusResult` never contains the password or the secret. Its
-fields are `server`, `address`, `port`, `username`, `attempts`, `elapsed_ms`,
-and `reply`. The `reply` (`RadiusReply`) has `code`, `code_name`, `accepted`,
+fields are `server`, `address` (the IPv4 or IPv6 address that answered),
+`port`, `username`, `attempts`, `elapsed_ms`, `reply`, and
+`failed_addresses`, a tuple of `(address, error)` pairs for the addresses
+tried before it ([IPv4 and IPv6](#ipv4-and-ipv6)). The `reply` (`RadiusReply`) has `code`, `code_name`, `accepted`,
 `reply_messages`, `message_authenticator`, and `attributes`. Each attribute
 (`RadiusAttribute`) has its `number`, raw `value` bytes, `name`, and readable
 `text`. `result.to_dict()` gives the JSON form shown above.
@@ -185,7 +240,10 @@ own:
 
 1. **One UDP request, one reply.** The client sends an `Access-Request`
    datagram. UDP does not guarantee delivery, so after `--timeout` seconds the
-   client resends the identical packet, up to `--retries` times.
+   client can resend the identical packet, up to `--retries` times (none by
+   default). A server
+   name with several addresses gets this exchange at each address in turn,
+   with a new request for each.
 2. **Packet layout.** A 20-byte header (code, identifier, length, and a
    16-byte authenticator) is followed by attributes. Each attribute is one
    type byte, one length byte, and the value. The request carries
@@ -212,12 +270,14 @@ own:
 
 | Symptom | Likely causes |
 | --- | --- |
-| `no reply ... after 3 attempt(s)` (exit 3) | A firewall blocks UDP 1812. The server does not list this host's address as a client. The shared secret is wrong and the server drops the request without answering, which FreeRADIUS and ISE both do. Check the server's log for this host's address. |
+| `no reply ... after 1 attempt(s)` (exit 3) | A firewall blocks UDP 1812. The server does not list this host's address as a client. The shared secret is wrong and the server drops the request without answering, which FreeRADIUS and ISE both do. Check the server's log for this host's address. Over a slow or lossy path, the reply may only be late: try `--timeout 3 --retries 2`. |
 | `nothing is listening on this UDP port` (exit 2) | The host is reachable, but no RADIUS service is running on that port. Check `--port`; some older servers use 1645. |
+| `... port 1812 did not answer: ...` on standard error, then a result | One of the server's addresses failed and a later one answered. If it is the IPv6 address, the server may know this host by its IPv4 address only; see [IPv4 and IPv6](#ipv4-and-ipv6). Use `-4` or `-6` to skip it. |
+| `cannot reach ... at any of its addresses` (exit 2) | Every address failed. The message gives each address and what happened there. |
 | `Response Authenticator is wrong` (exit 2) | The server answered, but with a different shared secret. Compare the secret on both sides; trailing spaces count. |
 | `Access-Reject` (exit 1) | The server rejected the login: a wrong password, a locked account, or a policy that does not match. `Reply-Message` and the server's logs usually explain which. |
 | `Access-Challenge` (exit 1) | The server wants a second factor, such as an OTP. This client does not answer challenges. |
-| `cannot resolve` (exit 2) | DNS cannot resolve the server name. Use the IP address or fix the name. |
+| `cannot resolve` (exit 2) | DNS cannot resolve the server name. Use the IP address or fix the name. With `-4` or `-6`, the name has no address of that IP version. |
 | `input ended at the password prompt` or `at the shared secret prompt` (exit 2) | Nothing could be typed at the prompt: the command ran from cron, CI, or a pipe with no terminal, or someone pressed Ctrl-D. In scripts, give the password with `--password-env` or `--password-stdin` and the secret with `--secret-file` or `--secret-env`. |
 | `input ended before the password was read from standard input` (exit 2) | `--password-stdin` found no line on standard input, for example because the command that should print the password printed nothing. |
 

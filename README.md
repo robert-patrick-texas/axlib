@@ -142,7 +142,7 @@ result = authenticate("192.0.2.10", "alice", password, secret)  # port=1812 by d
 print(result.reply.code_name, result.accepted)
 ```
 
-The exit status is 0 for Access-Accept, 1 for Reject or Challenge, 2 for errors, and 3 when no reply arrives. `--json` prints the full result. The module uses only the standard library and is checked against the RFC 2865 test vectors. See [docs/RADIUS.md](docs/RADIUS.md).
+It works over IPv4 and IPv6: a server name with both kinds of address is tried at each in turn until one answers, and `-4` or `-6` uses one only. The exit status is 0 for Access-Accept, 1 for Reject or Challenge, 2 for errors, and 3 when no reply arrives. `--json` prints the full result. The module uses only the standard library and is checked against the RFC 2865 test vectors. See [docs/RADIUS.md](docs/RADIUS.md).
 
 ## Show-command parsing
 

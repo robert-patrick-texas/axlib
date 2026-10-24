@@ -13,9 +13,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import io
+import ipaddress
 import json
 import socket
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -27,6 +29,8 @@ import pytest
 from axlib.__main__ import main as axlib_main
 from axlib.radius import (
     ACCESS_ACCEPT,
+    DEFAULT_RETRIES,
+    DEFAULT_TIMEOUT,
     EXIT_ACCEPT,
     EXIT_ERROR,
     EXIT_NO_REPLY,
@@ -36,6 +40,7 @@ from axlib.radius import (
     RadiusTimeoutError,
     authenticate,
     build_access_request,
+    build_arg_parser,
     hide_password,
     main,
     verify_response,
@@ -115,7 +120,7 @@ def _sign_reply(
 
 @dataclass
 class FakeServer:
-    """A one-thread RADIUS server answering on 127.0.0.1."""
+    """A one-thread RADIUS server answering on one loopback address."""
 
     port: int
     requests: list[bytes] = field(default_factory=list)
@@ -125,9 +130,10 @@ class FakeServer:
 
 
 @contextmanager
-def fake_server(**options: Any) -> Iterator[FakeServer]:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("127.0.0.1", 0))
+def fake_server(host: str = "127.0.0.1", **options: Any) -> Iterator[FakeServer]:
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    sock = socket.socket(family, socket.SOCK_DGRAM)
+    sock.bind((host, 0))
     sock.settimeout(0.05)
     server = FakeServer(port=sock.getsockname()[1], **options)
     stop = threading.Event()
@@ -175,23 +181,45 @@ def _closed_udp_port() -> int:
         return sock.getsockname()[1]
 
 
-@pytest.fixture
-def ipv4_names(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Resolve host names to IPv4 addresses only, where the fake server listens.
+def _resolve_to(
+    monkeypatch: pytest.MonkeyPatch, *addresses: tuple[str, int]
+) -> list[int]:
+    """Make every name resolve to ``addresses``, in that order.
 
-    ``authenticate()`` uses the first address a name resolves to.  Whether
-    ``localhost`` gives ``127.0.0.1`` or ``::1`` first depends on the host's
-    ``/etc/hosts`` (GitHub's runners give ``::1``), so tests that pass a name
-    fix the answer instead of depending on the machine they run on.
+    Returns the list that collects the address family of each lookup, so a
+    test can check what ``ip_version`` asked the resolver for.
     """
-    resolve = socket.getaddrinfo
-    monkeypatch.setattr(
-        socket,
-        "getaddrinfo",
-        lambda host, port, **options: resolve(
-            host, port, **{**options, "family": socket.AF_INET}
-        ),
-    )
+    families: list[int] = []
+
+    def getaddrinfo(host: str, port: int, **options: Any) -> list[tuple]:
+        families.append(options.get("family", socket.AF_UNSPEC))
+        return [
+            (socket.AF_INET6, socket.SOCK_DGRAM, 17, "", (address, port, 0, 0))
+            if ":" in address
+            else (socket.AF_INET, socket.SOCK_DGRAM, 17, "", (address, port))
+            for address, port in addresses
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    return families
+
+
+def _has_ipv6_loopback() -> bool:
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
+            sock.bind(("::1", 0))
+    except OSError:
+        return False
+    return True
+
+
+NEEDS_IPV6 = pytest.mark.skipif(
+    not _has_ipv6_loopback(), reason="this host has no IPv6 loopback address"
+)
+CLOSED_PORT = (
+    "the server's host answered that nothing is listening on this UDP port "
+    "(ICMP port unreachable)"
+)
 
 
 # --- packet encoding, checked against RFC 2865 section 7.1 -----------------
@@ -323,6 +351,18 @@ def test_attribute_text_formats() -> None:
     assert RadiusAttribute(26, b"\0\x09").text == "0x0009"
 
 
+def test_attribute_text_ipv6_address_and_prefix() -> None:
+    address = ipaddress.IPv6Address("2001:db8::7").packed
+    assert RadiusAttribute(168, address).text == "2001:db8::7"
+    assert RadiusAttribute(168, b"\x01\x02").text == "0x0102"
+    # RFC 3162: reserved byte, prefix length, then only the bytes it needs.
+    prefix = b"\0\x40" + bytes.fromhex("20010db800000001")
+    assert RadiusAttribute(97, prefix).text == "2001:db8:0:1::/64"
+    assert RadiusAttribute(123, b"\0\x00").text == "::/0"
+    assert RadiusAttribute(97, b"\0\x81" + bytes(16)).text == "0x0081" + "00" * 16
+    assert RadiusAttribute(97, b"\0").text == "0x00"
+
+
 # --- network exchange with a local server --------------------------------
 
 
@@ -341,7 +381,6 @@ def test_authenticate_accept() -> None:
     assert dict(_attributes(server.requests[0][20:]))[4] == bytes((127, 0, 0, 1))
 
 
-@pytest.mark.usefixtures("ipv4_names")
 def test_authenticate_reject_is_a_result_not_an_error() -> None:
     with fake_server() as server:
         result = authenticate("localhost", "alice", "wrong", SECRET, port=server.port)
@@ -353,7 +392,13 @@ def test_authenticate_reject_is_a_result_not_an_error() -> None:
 def test_authenticate_retransmits_identical_packet() -> None:
     with fake_server(drop_first=1) as server:
         result = authenticate(
-            "127.0.0.1", "alice", PASSWORD, SECRET, port=server.port, timeout=0.2
+            "127.0.0.1",
+            "alice",
+            PASSWORD,
+            SECRET,
+            port=server.port,
+            timeout=0.2,
+            retries=1,
         )
     assert result.attempts == 2
     assert server.requests[0] == server.requests[1]
@@ -410,12 +455,215 @@ def test_authenticate_reports_unresolvable_server() -> None:
         ({"port": 0}, "port"),
         ({"timeout": 0}, "timeout"),
         ({"retries": -1}, "retries"),
+        ({"ip_version": 5}, "ip_version"),
     ],
 )
 def test_authenticate_validates_arguments(options: dict, message: str) -> None:
     arguments: dict = {"secret": SECRET, **options}
     with pytest.raises(ValueError, match=message):
         authenticate("127.0.0.1", "alice", PASSWORD, **arguments)
+
+
+# --- IPv6, and names with several addresses ---------------------------------
+
+
+@NEEDS_IPV6
+def test_authenticate_over_ipv6() -> None:
+    with fake_server(host="::1") as server:
+        result = authenticate("::1", "alice", PASSWORD, SECRET, port=server.port)
+
+    assert result.accepted
+    assert result.address == "::1"
+    assert result.failed_addresses == ()
+    sent = dict(_attributes(server.requests[0][20:]))
+    assert sent[95] == ipaddress.IPv6Address("::1").packed  # NAS-IPv6-Address
+    assert 4 not in sent  # no NAS-IP-Address
+
+
+def test_authenticate_tries_the_next_address_when_the_port_is_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with fake_server() as server:
+        # The server listens on 127.0.0.1 only, so 127.0.0.2 reports the
+        # port closed, as ::1 does when a server listens on IPv4 only.
+        _resolve_to(monkeypatch, ("127.0.0.2", server.port), ("127.0.0.1", server.port))
+        result = authenticate(
+            "radius.example", "alice", PASSWORD, SECRET, port=server.port
+        )
+
+    assert result.accepted
+    assert result.address == "127.0.0.1"
+    assert result.failed_addresses == (("127.0.0.2", CLOSED_PORT),)
+    assert result.to_dict()["failed_addresses"] == [
+        {"address": "127.0.0.2", "error": CLOSED_PORT}
+    ]
+
+
+def test_authenticate_tries_the_next_address_it_cannot_send_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Linux refuses to send to the broadcast address without SO_BROADCAST at
+    # once, standing in for an address this host has no route to.
+    with fake_server() as server:
+        _resolve_to(
+            monkeypatch, ("255.255.255.255", server.port), ("127.0.0.1", server.port)
+        )
+        result = authenticate(
+            "radius.example", "alice", PASSWORD, SECRET, port=server.port
+        )
+
+    assert result.address == "127.0.0.1"
+    [(address, error)] = result.failed_addresses
+    assert address == "255.255.255.255"
+    assert "Permission denied" in error
+
+
+def test_authenticate_tries_the_next_address_after_silence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with (
+        fake_server(host="127.0.0.2", drop_first=99) as silent,
+        fake_server() as server,
+    ):
+        _resolve_to(monkeypatch, ("127.0.0.2", silent.port), ("127.0.0.1", server.port))
+        result = authenticate(
+            "radius.example",
+            "alice",
+            PASSWORD,
+            SECRET,
+            port=server.port,
+            timeout=0.1,
+            retries=1,
+        )
+
+    assert result.address == "127.0.0.1"
+    assert result.attempts == 1
+    assert len(silent.requests) == 2
+    assert result.failed_addresses == (
+        ("127.0.0.2", "no reply after 2 attempt(s) of 0.1 s"),
+    )
+
+
+def test_authenticate_stops_at_a_reply_that_fails_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A reply signed with another secret is an answer, not a missing server:
+    # trying the next address would hide the real problem.
+    with (
+        fake_server(host="127.0.0.2", reply_secret=b"other-secret") as wrong,
+        fake_server() as server,
+    ):
+        _resolve_to(monkeypatch, ("127.0.0.2", wrong.port), ("127.0.0.1", server.port))
+        with pytest.raises(RadiusError, match="shared secret"):
+            authenticate("radius.example", "alice", PASSWORD, SECRET, port=server.port)
+    assert server.requests == []
+
+
+def test_authenticate_names_every_address_that_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with fake_server(host="127.0.0.3", drop_first=99) as silent:
+        _resolve_to(monkeypatch, ("127.0.0.2", silent.port), ("127.0.0.3", silent.port))
+        with pytest.raises(RadiusError) as caught:
+            authenticate(
+                "radius.example",
+                "alice",
+                PASSWORD,
+                SECRET,
+                port=silent.port,
+                timeout=0.1,
+                retries=0,
+            )
+
+    # One address answered with an error, so this is not "no reply".
+    assert not isinstance(caught.value, RadiusTimeoutError)
+    assert str(caught.value) == (
+        f"cannot reach radius.example port {silent.port} at any of its addresses: "
+        f"127.0.0.2: {CLOSED_PORT}; 127.0.0.3: no reply after 1 attempt(s) of 0.1 s."
+    )
+
+
+def test_authenticate_times_out_at_every_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with (
+        fake_server(host="127.0.0.2", drop_first=99) as first,
+        fake_server(host="127.0.0.3", drop_first=99) as second,
+    ):
+        _resolve_to(monkeypatch, ("127.0.0.2", first.port), ("127.0.0.3", second.port))
+        with pytest.raises(RadiusTimeoutError) as caught:
+            authenticate(
+                "radius.example",
+                "alice",
+                PASSWORD,
+                SECRET,
+                port=first.port,
+                timeout=0.1,
+                retries=0,
+            )
+
+    message = str(caught.value)
+    assert message.startswith(
+        f"no reply from radius.example port {first.port} at any of its addresses "
+        "(127.0.0.2, 127.0.0.3) after 1 attempt(s) of 0.1 s each."
+    )
+    assert "over IPv6" in message
+    assert (len(first.requests), len(second.requests)) == (1, 1)
+
+
+@NEEDS_IPV6
+def test_authenticate_defaults_send_one_request_of_one_second_per_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # localhost resolving to ::1 and 127.0.0.1, with a silent server on each:
+    # the defaults send one request to each address and wait one second for it.
+    with (
+        fake_server(host="::1", drop_first=99) as ipv6,
+        fake_server(drop_first=99) as ipv4,
+    ):
+        _resolve_to(monkeypatch, ("::1", ipv6.port), ("127.0.0.1", ipv4.port))
+        started = time.monotonic()
+        with pytest.raises(
+            RadiusTimeoutError, match=r"after 1 attempt\(s\) of 1 s each"
+        ):
+            authenticate("localhost", "alice", PASSWORD, SECRET, port=ipv4.port)
+        elapsed = time.monotonic() - started
+
+    assert (len(ipv6.requests), len(ipv4.requests)) == (1, 1)
+    assert 2.0 <= elapsed < 2.9
+
+
+def test_cli_defaults_match_the_api() -> None:
+    args = build_arg_parser().parse_args(["radius.example", "-u", "alice"])
+    assert (args.timeout, args.retries) == (DEFAULT_TIMEOUT, DEFAULT_RETRIES)
+    assert (DEFAULT_TIMEOUT, DEFAULT_RETRIES) == (1.0, 0)
+
+
+@pytest.mark.parametrize(
+    ("ip_version", "family"),
+    [(None, socket.AF_UNSPEC), (4, socket.AF_INET), (6, socket.AF_INET6)],
+)
+def test_authenticate_ip_version_selects_the_address_family(
+    monkeypatch: pytest.MonkeyPatch, ip_version: int | None, family: int
+) -> None:
+    with fake_server() as server:
+        families = _resolve_to(monkeypatch, ("127.0.0.1", server.port))
+        authenticate(
+            "radius.example",
+            "alice",
+            PASSWORD,
+            SECRET,
+            port=server.port,
+            ip_version=ip_version,
+        )
+    assert families == [family]
+
+
+def test_authenticate_ip_version_without_such_an_address() -> None:
+    with pytest.raises(
+        RadiusError, match=r"cannot resolve '127\.0\.0\.1' to an IPv6 address"
+    ):
+        authenticate("127.0.0.1", "alice", PASSWORD, SECRET, ip_version=6)
 
 
 # --- command line ----------------------------------------------------------
@@ -453,6 +701,7 @@ def test_cli_accept_json_with_env_and_secret_file(tmp_path: Path) -> None:
     assert document["accepted"] is True
     assert document["message_authenticator"] is True
     assert document["reply_messages"] == ["Welcome"]
+    assert document["failed_addresses"] == []
     assert {
         "type": 26,
         "name": "Vendor-Specific",
@@ -461,7 +710,6 @@ def test_cli_accept_json_with_env_and_secret_file(tmp_path: Path) -> None:
     assert PASSWORD not in out
 
 
-@pytest.mark.usefixtures("ipv4_names")
 def test_cli_reject_text_with_stdin_and_prompt() -> None:
     prompts: list[str] = []
 
@@ -525,6 +773,45 @@ def test_cli_no_reply_exit_status() -> None:
         )
     assert (status, out) == (EXIT_NO_REPLY, "")
     assert err.startswith("radius: no reply")
+
+
+def test_cli_notes_addresses_that_did_not_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with fake_server() as server:
+        _resolve_to(monkeypatch, ("127.0.0.2", server.port), ("127.0.0.1", server.port))
+        argv = ["radius.example", "-p", str(server.port), "-u", "alice"]
+        argv += ["--password", PASSWORD, "--secret", SECRET.decode()]
+        status, out, err = _run(argv)
+
+    assert status == EXIT_ACCEPT
+    # The result keeps its format; the address passed over is noted on stderr.
+    assert out.startswith(
+        f"Access-Accept from radius.example (127.0.0.1) port {server.port}"
+    )
+    assert (
+        err == f"radius: 127.0.0.2 port {server.port} did not answer: {CLOSED_PORT}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("option", "family"), [("-4", socket.AF_INET), ("--ipv6", socket.AF_INET6)]
+)
+def test_cli_ip_version_options(
+    monkeypatch: pytest.MonkeyPatch, option: str, family: int
+) -> None:
+    with fake_server() as server:
+        families = _resolve_to(monkeypatch, ("127.0.0.1", server.port))
+        argv = ["radius.example", option, "-p", str(server.port), "-u", "alice"]
+        status, _, _ = _run([*argv, "--password", PASSWORD, "--secret", "testing123"])
+    assert (status, families) == (EXIT_ACCEPT, [family])
+
+
+def test_cli_rejects_both_ip_versions(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        main(["radius.example", "-4", "-6", "-u", "alice"])
+    assert stopped.value.code == 2
+    assert "not allowed with argument" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

@@ -16,8 +16,12 @@ shared secret".  This module is that RADIUS client.  It sends one
 How a RADIUS exchange works (and what each part of this module does):
 
 * One UDP datagram goes to the server (port 1812 by default) and one comes
-  back.  UDP has no delivery guarantee, so the client resends the *identical*
-  packet after a timeout (:func:`authenticate`, ``retries``).
+  back.  UDP has no delivery guarantee, so the client can resend the
+  *identical* packet after a timeout (:func:`authenticate`, ``retries``).  By
+  default it waits one second and does not resend.
+* A server name can resolve to IPv6 and IPv4 addresses.  They are tried one
+  after another, in the order the host's resolver prefers, until one answers;
+  ``ip_version`` limits the check to one of them.
 * Every packet is a 20-byte header (code, identifier, length, 16-byte
   authenticator) followed by attributes encoded as type-length-value
   (:func:`build_access_request`).
@@ -74,11 +78,15 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
-from typing import TextIO
+from typing import Any, TextIO
 
 DEFAULT_PORT = 1812
-DEFAULT_TIMEOUT = 3.0
-DEFAULT_RETRIES = 2
+# One attempt of one second per server address.  A RADIUS server on a
+# management network answers in milliseconds, so a longer wait or a resend
+# mostly delays the "no reply" verdict, and that delay is paid again at every
+# address a name resolves to.  Raise them for a slow or lossy path.
+DEFAULT_TIMEOUT = 1.0
+DEFAULT_RETRIES = 0
 DEFAULT_NAS_IDENTIFIER = "axlib"
 
 # Packet codes (RFC 2865 section 3).
@@ -125,7 +133,16 @@ ATTRIBUTES: Mapping[int, tuple[str, str]] = MappingProxyType(
         27: ("Session-Timeout", "integer"),
         28: ("Idle-Timeout", "integer"),
         MESSAGE_AUTHENTICATOR: ("Message-Authenticator", "octets"),
+        97: ("Framed-IPv6-Prefix", "ipv6prefix"),
+        123: ("Delegated-IPv6-Prefix", "ipv6prefix"),
+        168: ("Framed-IPv6-Address", "ipv6address"),
     }
+)
+
+# The ``ip_version`` values :func:`authenticate` accepts and the address
+# families they ask the resolver for; AF_UNSPEC means "IPv4 and IPv6".
+FAMILIES: Mapping[int | None, socket.AddressFamily] = MappingProxyType(
+    {None: socket.AF_UNSPEC, 4: socket.AF_INET, 6: socket.AF_INET6}
 )
 
 # "!" means network byte order (big-endian); B is one byte, H two bytes, and
@@ -188,8 +205,8 @@ class RadiusAttribute:
             None: The format is chosen from :data:`ATTRIBUTES`.
 
         Returns:
-            str: Text, a decimal number, an IP address, a vendor summary, or
-                ``0x``-prefixed hex for binary data.
+            str: Text, a decimal number, an IPv4 or IPv6 address or prefix, a
+                vendor summary, or ``0x``-prefixed hex for binary data.
 
         Raises:
             None: A value that does not fit its format is shown as hex.
@@ -201,6 +218,10 @@ class RadiusAttribute:
             return str(int.from_bytes(self.value, "big"))
         if kind == "address" and len(self.value) == 4:
             return str(ipaddress.IPv4Address(self.value))
+        if kind == "ipv6address" and len(self.value) == 16:
+            return str(ipaddress.IPv6Address(self.value))
+        if kind == "ipv6prefix":
+            return _ipv6_prefix_text(self.value)
         if kind == "vendor":
             return _vendor_text(self.value)
         return _text_or_hex(self.value)
@@ -273,12 +294,17 @@ class RadiusResult:
 
     Attributes:
         server: Server name or address as the caller gave it.
-        address: IP address the request was actually sent to.
+        address: IP address that answered, IPv4 or IPv6.
         port: UDP port the request was sent to.
         username: User name that was checked.
-        attempts: Transmissions needed, ``1`` when the first one was answered.
-        elapsed_ms: Milliseconds from the first transmission to the reply.
+        attempts: Transmissions to ``address``, ``1`` when the first one was
+            answered.
+        elapsed_ms: Milliseconds from the first transmission to ``address``
+            to its reply.
         reply: The verified server reply.
+        failed_addresses: ``(address, error)`` for each address of the server
+            tried before ``address`` that did not answer; empty when the first
+            address answered.
     """
 
     server: str
@@ -288,6 +314,7 @@ class RadiusResult:
     attempts: int
     elapsed_ms: float
     reply: RadiusReply
+    failed_addresses: tuple[tuple[str, str], ...] = ()
 
     @property
     def accepted(self) -> bool:
@@ -332,6 +359,10 @@ class RadiusResult:
                 {"type": a.number, "name": a.name, "value": a.text}
                 for a in self.reply.attributes
             ],
+            "failed_addresses": [
+                {"address": address, "error": error}
+                for address, error in self.failed_addresses
+            ],
         }
 
 
@@ -352,6 +383,29 @@ def _text_or_hex(value: bytes) -> str:
     except UnicodeDecodeError:
         text = ""
     return text if text and text.isprintable() else "0x" + value.hex()
+
+
+def _ipv6_prefix_text(value: bytes) -> str:
+    """Show an IPv6 prefix attribute (RFC 3162 section 2.3) as ``2001:db8::/48``.
+
+    The value is a reserved byte, the prefix length in bits, and only as many
+    bytes of the prefix as that length needs (zero to sixteen); the rest of
+    the address is zero.
+
+    Args:
+        value (bytes): Attribute value of a prefix attribute.
+
+    Returns:
+        str: The prefix in CIDR notation, or ``0x`` followed by hex digits
+            when the value is too short, too long, or claims over 128 bits.
+
+    Raises:
+        None: A malformed value falls back to hex.
+    """
+    if not 2 <= len(value) <= 18 or value[1] > 128:
+        return "0x" + value.hex()
+    prefix = ipaddress.IPv6Address(value[2:].ljust(16, bytes(1)))
+    return f"{prefix}/{value[1]}"
 
 
 def _vendor_text(value: bytes) -> str:
@@ -673,8 +727,11 @@ def _await_reply(
         RadiusReply | None: The verified reply, or ``None`` on timeout.
 
     Raises:
-        RadiusError: If the server's host reports the port closed, or a reply
-            fails verification.
+        ConnectionRefusedError: If the server's host reports that nothing
+            listens on the port: a connected UDP socket turns the ICMP "port
+            unreachable" message into this error.
+        OSError: If receiving fails for another network reason.
+        RadiusError: If a reply fails verification.
     """
     deadline = time.monotonic() + timeout
     while (remaining := deadline - time.monotonic()) > 0:
@@ -683,17 +740,132 @@ def _await_reply(
             data = sock.recv(MAX_PACKET_LENGTH)
         except TimeoutError:
             return None
-        except ConnectionRefusedError as exc:
-            # A connected UDP socket reports the ICMP "port unreachable" that
-            # the server's host sends back when nothing listens on the port.
-            raise RadiusError(
-                "the server's host answered that nothing is listening on this "
-                "UDP port (ICMP port unreachable)."
-            ) from exc
         if len(data) >= 2 and data[1] != request[1]:
             continue  # a late reply to some other request: discard it
         return verify_response(data, request=request, secret=secret)
     return None
+
+
+def _resolve(
+    server: str, port: int, ip_version: int | None
+) -> list[tuple[socket.AddressFamily, tuple[Any, ...]]]:
+    """Return every address of ``server``, in the order to try them.
+
+    The resolver sorts the addresses by this host's preferences (RFC 6724,
+    tuned in ``/etc/gai.conf`` on Linux), which usually puts IPv6 first when
+    the host has IPv6 connectivity.
+
+    Args:
+        server (str): Server host name, IPv4 address, or IPv6 address.
+        port (int): Server UDP port.
+        ip_version (int | None): ``4`` or ``6`` for that version only, or
+            ``None`` for both.
+
+    Returns:
+        list[tuple[socket.AddressFamily, tuple[Any, ...]]]: The address
+        family and socket address of each answer, each address once.
+
+    Raises:
+        RadiusError: If the name has no address of the requested version.
+    """
+    try:
+        answers = socket.getaddrinfo(
+            server, port, family=FAMILIES[ip_version], type=socket.SOCK_DGRAM
+        )
+    except socket.gaierror as exc:
+        wanted = "" if ip_version is None else f" to an IPv{ip_version} address"
+        raise RadiusError(f"cannot resolve {server!r}{wanted}: {exc.strerror}") from exc
+    # dict.fromkeys drops repeated answers but, unlike set(), keeps the order.
+    return list(
+        dict.fromkeys((family, address) for family, _, _, _, address in answers)
+    )
+
+
+def _ask_address(
+    family: socket.AddressFamily,
+    address: tuple[Any, ...],
+    *,
+    username: str,
+    password: str,
+    secret: bytes,
+    nas_identifier: str,
+    timeout: float,
+    retries: int,
+) -> tuple[RadiusReply, int, float] | None:
+    """Send an ``Access-Request`` to one server address and await its reply.
+
+    Args:
+        family (socket.AddressFamily): ``AF_INET`` or ``AF_INET6``.
+        address (tuple[Any, ...]): Socket address from :func:`_resolve`.
+        username (str): User name to check.
+        password (str): Password to check.
+        secret (bytes): Shared secret.
+        nas_identifier (str): Name this client reports in ``NAS-Identifier``.
+        timeout (float): Seconds to wait for a reply to each transmission.
+        retries (int): Extra transmissions after the first times out.
+
+    Returns:
+        tuple[RadiusReply, int, float] | None: The verified reply, the
+        transmissions it took, and the milliseconds from the first one to the
+        reply; ``None`` when every transmission timed out.
+
+    Raises:
+        ConnectionRefusedError: If the host reports that nothing listens on
+            the port (ICMP port unreachable).
+        OSError: If the address cannot be reached, for example because this
+            host has no route to it.
+        RadiusError: If a reply fails verification.
+    """
+    identifier = secrets.randbelow(256)
+    # The Request Authenticator must be unpredictable (RFC 2865 section 3),
+    # so it comes from the operating system's secure random source.
+    authenticator = secrets.token_bytes(AUTHENTICATOR_LENGTH)
+    with socket.socket(family, socket.SOCK_DGRAM) as sock:
+        # connect() on UDP sends nothing; it fixes the destination so the
+        # kernel delivers only datagrams from the server, and it chooses the
+        # local address reported as this client's NAS address, which is an
+        # IPv6 address (NAS-IPv6-Address) when the server's address is one.
+        sock.connect(address)
+        request = build_access_request(
+            identifier=identifier,
+            authenticator=authenticator,
+            username=username,
+            password=password,
+            secret=secret,
+            nas_identifier=nas_identifier,
+            nas_address=sock.getsockname()[0],
+        )
+        started = time.perf_counter()
+        for attempt in range(1, retries + 2):
+            # Retransmissions resend the identical packet, so a late reply to
+            # an earlier copy is still a valid answer.
+            sock.send(request)
+            reply = _await_reply(sock, request, secret, timeout)
+            if reply is not None:
+                elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
+                return reply, attempt, elapsed_ms
+    return None
+
+
+def _network_error(exc: OSError) -> str:
+    """Describe why one server address could not be reached.
+
+    Args:
+        exc (OSError): Error raised while sending to or receiving from it.
+
+    Returns:
+        str: A phrase for an operator, such as the meaning of ICMP port
+            unreachable.
+
+    Raises:
+        None: Only string formatting.
+    """
+    if isinstance(exc, ConnectionRefusedError):
+        return (
+            "the server's host answered that nothing is listening on this UDP "
+            "port (ICMP port unreachable)"
+        )
+    return str(exc)
 
 
 def authenticate(
@@ -706,12 +878,22 @@ def authenticate(
     timeout: float = DEFAULT_TIMEOUT,
     retries: int = DEFAULT_RETRIES,
     nas_identifier: str = DEFAULT_NAS_IDENTIFIER,
+    ip_version: int | None = None,
 ) -> RadiusResult:
     """Ask a RADIUS server whether it accepts a username and password.
 
     A reject or challenge is a normal answer and is returned, not raised;
     check :attr:`RadiusResult.accepted`.  Exceptions mean there is no
     trustworthy answer at all.
+
+    A name with several addresses, such as an IPv6 and an IPv4 address, is
+    tried one address at a time, in the order the resolver gives, until one
+    answers.  An address moves the check on to the next one when it cannot
+    be reached, reports the port closed, or stays silent through every retry
+    (so each silent address adds ``timeout * (retries + 1)`` seconds: one
+    second with the defaults, which send one request per address).  A reply
+    that fails verification ends the check at once: the server answered,
+    with a different shared secret.
 
     Args:
         server (str): Server host name, IPv4 address, or IPv6 address.
@@ -720,16 +902,21 @@ def authenticate(
         secret (str | bytes): Shared secret the server has configured for
             this host.
         port (int): Server UDP port, 1812 by default.
-        timeout (float): Seconds to wait for a reply to each transmission.
-        retries (int): Extra transmissions after the first times out.
+        timeout (float): Seconds to wait for a reply to each transmission,
+            1 by default.
+        retries (int): Extra transmissions to the same address after the
+            first times out, 0 by default.
         nas_identifier (str): Name this client reports in ``NAS-Identifier``.
+        ip_version (int | None): ``4`` or ``6`` to use only the server's
+            addresses of that IP version; ``None`` (the default) for both.
 
     Returns:
-        RadiusResult: The verified reply plus timing and addressing details.
+        RadiusResult: The verified reply plus timing and addressing details,
+        including any addresses that did not answer first.
 
     Raises:
         ValueError: If an argument is empty, out of range, or too long.
-        RadiusTimeoutError: If no reply arrives after every retry.
+        RadiusTimeoutError: If no address replies after every retry.
         RadiusError: If the server cannot be resolved or reached, or its reply
             fails verification.
     """
@@ -740,55 +927,94 @@ def authenticate(
         raise ValueError(f"port must be 1-65535, not {port}.")
     if timeout <= 0 or retries < 0:
         raise ValueError("timeout must be positive and retries zero or more.")
-    try:
-        family, kind, protocol, _, address = socket.getaddrinfo(
-            server, port, type=socket.SOCK_DGRAM
-        )[0]
-    except socket.gaierror as exc:
-        raise RadiusError(f"cannot resolve {server!r}: {exc.strerror}") from exc
+    if ip_version not in FAMILIES:
+        raise ValueError(f"ip_version must be 4, 6, or None, not {ip_version!r}.")
 
-    identifier = secrets.randbelow(256)
-    # The Request Authenticator must be unpredictable (RFC 2865 section 3),
-    # so it comes from the operating system's secure random source.
-    authenticator = secrets.token_bytes(AUTHENTICATOR_LENGTH)
-    try:
-        with socket.socket(family, kind, protocol) as sock:
-            # connect() on UDP sends nothing; it fixes the destination so the
-            # kernel delivers only datagrams from the server, and it chooses
-            # the local address reported as this client's NAS address.
-            sock.connect(address)
-            request = build_access_request(
-                identifier=identifier,
-                authenticator=authenticator,
+    wait = f"after {retries + 1} attempt(s) of {timeout:g} s"
+    failed: list[tuple[str, str]] = []
+    silent = 0
+    for family, address in _resolve(server, port, ip_version):
+        try:
+            answer = _ask_address(
+                family,
+                address,
                 username=username,
                 password=password,
                 secret=secret_bytes,
                 nas_identifier=nas_identifier,
-                nas_address=sock.getsockname()[0],
+                timeout=timeout,
+                retries=retries,
             )
-            started = time.perf_counter()
-            for attempt in range(1, retries + 2):
-                # Retransmissions resend the identical packet, so a late reply
-                # to an earlier copy is still a valid answer.
-                sock.send(request)
-                reply = _await_reply(sock, request, secret_bytes, timeout)
-                if reply is not None:
-                    return RadiusResult(
-                        server=server,
-                        address=str(address[0]),
-                        port=port,
-                        username=username,
-                        attempts=attempt,
-                        elapsed_ms=round((time.perf_counter() - started) * 1000, 1),
-                        reply=reply,
-                    )
-    except OSError as exc:
-        raise RadiusError(f"cannot reach {server} port {port}: {exc}") from exc
-    raise RadiusTimeoutError(
-        f"no reply from {server} port {port} after {retries + 1} attempt(s) of "
-        f"{timeout:g} s. Check that the server is reachable on UDP {port}, that "
-        "it lists this host as a RADIUS client, and that the shared secret "
-        "matches (many servers silently drop requests signed with a wrong one)."
+        except OSError as exc:
+            failed.append((str(address[0]), _network_error(exc)))
+            continue
+        if answer is None:
+            failed.append((str(address[0]), f"no reply {wait}"))
+            silent += 1
+            continue
+        reply, attempts, elapsed_ms = answer
+        return RadiusResult(
+            server=server,
+            address=str(address[0]),
+            port=port,
+            username=username,
+            attempts=attempts,
+            elapsed_ms=elapsed_ms,
+            reply=reply,
+            failed_addresses=tuple(failed),
+        )
+    raise _no_answer(server, port, failed, all_silent=silent == len(failed), wait=wait)
+
+
+def _no_answer(
+    server: str,
+    port: int,
+    failed: Sequence[tuple[str, str]],
+    *,
+    all_silent: bool,
+    wait: str,
+) -> RadiusError:
+    """Build the error for a server none of whose addresses answered.
+
+    Silence everywhere is a :class:`RadiusTimeoutError` (exit status 3); when
+    any address reported an error, the result is a :class:`RadiusError` that
+    names each address and what happened there.
+
+    Args:
+        server (str): Server name or address as the caller gave it.
+        port (int): Server UDP port.
+        failed (Sequence[tuple[str, str]]): ``(address, error)`` for every
+            address tried, in order.
+        all_silent (bool): Whether every address stayed silent.
+        wait (str): How long each address was given, such as
+            ``after 1 attempt(s) of 1 s``.
+
+    Returns:
+        RadiusError: The exception for :func:`authenticate` to raise.
+
+    Raises:
+        None: Only builds the exception.
+    """
+    hint = (
+        f"Check that the server is reachable on UDP {port}, that it lists this "
+        "host as a RADIUS client, and that the shared secret matches (many "
+        "servers silently drop requests signed with a wrong one)."
+    )
+    if all_silent and len(failed) == 1:
+        return RadiusTimeoutError(f"no reply from {server} port {port} {wait}. {hint}")
+    if all_silent:
+        addresses = ", ".join(address for address, _ in failed)
+        return RadiusTimeoutError(
+            f"no reply from {server} port {port} at any of its addresses "
+            f"({addresses}) {wait} each. {hint} A server that knows this host "
+            "by its IPv4 address only ignores requests that arrive over IPv6, "
+            "and the other way round."
+        )
+    if len(failed) == 1:
+        return RadiusError(f"cannot reach {server} port {port}: {failed[0][1]}.")
+    details = "; ".join(f"{address}: {error}" for address, error in failed)
+    return RadiusError(
+        f"cannot reach {server} port {port} at any of its addresses: {details}."
     )
 
 
@@ -814,11 +1040,32 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "The password and shared secret are prompted for when no other "
             "source is given. Values passed with --password or --secret are "
             "visible to other users in ps and kept in shell history. "
+            "A server name with IPv6 and IPv4 addresses is tried at each "
+            "address in turn until one answers; -4 or -6 uses one version only. "
             "Exit status: 0 Access-Accept, 1 Access-Reject or Access-Challenge, "
             "2 error, 3 no reply."
         ),
     )
-    parser.add_argument("server", help="RADIUS server host name or IP address.")
+    parser.add_argument(
+        "server", help="RADIUS server host name, IPv4 address, or IPv6 address."
+    )
+    version = parser.add_mutually_exclusive_group()
+    version.add_argument(
+        "-4",
+        "--ipv4",
+        dest="ip_version",
+        action="store_const",
+        const=4,
+        help="Use only the server's IPv4 addresses.",
+    )
+    version.add_argument(
+        "-6",
+        "--ipv6",
+        dest="ip_version",
+        action="store_const",
+        const=6,
+        help="Use only the server's IPv6 addresses.",
+    )
     parser.add_argument(
         "-p",
         "--port",
@@ -1057,6 +1304,7 @@ def main(
             timeout=args.timeout,
             retries=args.retries,
             nas_identifier=args.nas_identifier,
+            ip_version=args.ip_version,
         )
     except RadiusTimeoutError as exc:
         print(f"radius: {exc}", file=err)
@@ -1065,6 +1313,10 @@ def main(
         print(f"radius: {exc}", file=err)
         return EXIT_ERROR
 
+    # Addresses passed over on the way to the one that answered go to standard
+    # error, so the result on standard output keeps its format for scripts.
+    for address, error in result.failed_addresses:
+        print(f"radius: {address} port {args.port} did not answer: {error}", file=err)
     if args.json:
         print(json.dumps(result.to_dict(), indent=2), file=out)
     else:
