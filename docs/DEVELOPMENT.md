@@ -40,6 +40,8 @@ make build
 | `make docs-audit` | The docstring audit above. |
 | `make test` | pytest with coverage. |
 | `make check` | `lint`, `docs-audit`, and `test`: run it before every commit. |
+| `make deps` | Raise every dependency to its newest version that passes `make check` on each supported Python, and hold back only what fails: the first step of a release (see [Dependencies](#dependencies)). |
+| `make deps-check` | Fail when a dependency is behind its newest version without a hold: the release gate. |
 | `make docs` | Build the documentation site in `site/` (see [Documentation site](#documentation-site)). |
 | `make build` | `uv build`: the source tarball and the wheel in `dist/`. |
 | `make install-test` | `make build`, then `install.sh` end to end in a container (see [Testing the installer](#testing-the-installer)). |
@@ -165,6 +167,62 @@ its version in a comment, so a moved tag cannot change what runs.
 pull request that changes the hashes and the comments together, and only for
 versions released at least a week earlier. CI runs on the pull request.
 
+## Dependencies
+
+Every release references, and is tested with, the newest version of each
+direct dependency: the runtime dependencies, the optional extras, and the
+`dev` group in `pyproject.toml`, even a version published the same day. A
+dependency stays on an older version only when its newest version fails
+`make check`. That is a *hold*, and it lasts one release.
+
+```bash
+make deps          # tools/dependencies.py upgrade: the first step of a release
+make deps-check    # tools/dependencies.py check: the release gate
+```
+
+`make deps`:
+
+1. Has uv resolve a copy of `pyproject.toml` without the holds' upper bounds,
+   which gives the newest version of each dependency that every supported
+   Python can use.
+2. Raises every requirement to that version: a `>=` lower bound, or `==` for
+   ruff, which is pinned exactly so that new lint rules arrive only through
+   this step. Then `uv lock --upgrade` updates every package in `uv.lock`,
+   and `make check` runs on each Python version in the classifiers, each in
+   its own environment under `build/dependencies/`, where the logs are kept.
+3. If that fails, puts the files back and tries one dependency at a time. A
+   dependency whose newest version fails is held at the version that passed,
+   below the failing one (`textual>=8.2.8,<9.1.0`, or `ruff==0.16.7`), and
+   recorded in `tools/dependency-holds.toml` with the date and the first
+   failure. Then it upgrades the other packages in `uv.lock`, the ones only
+   other packages need, if `make check` still passes; otherwise they keep
+   their versions and the notes say why. A failing run is repeated once and
+   counts only if it fails again, so a test that fails now and then does not
+   hold back a dependency.
+4. Prints a `### Dependencies` section for the release notes: what was
+   upgraded, and each hold with what failed. Its progress goes to standard
+   error.
+
+A hold is a temporary exception. The next `make deps` removes every hold's
+upper bound and tries the newest version again, and the hold disappears once
+it passes. A hold is often a small change the new version asks for, such as a
+new lint rule or a deprecation; make the change and run `make deps` again
+rather than releasing with the hold.
+
+`make deps-check` resolves the newest versions again and fails when a
+dependency has a newer version than `pyproject.toml` asks for and no hold for
+exactly that version, when a requirement has an upper bound that no hold
+explains, or when a held dependency is not named in the version's
+`RELEASE_NOTES.md` section. The release workflow runs it before anything is
+published, so a dependency released after `make deps` ran also stops the
+release. Run `make deps` again, commit, and move the tag.
+
+Do not add upper bounds by hand. `make check` compares `pyproject.toml` with
+the holds file without the network
+(`test_this_projects_holds_match_its_pyproject`), so a hand-made bound fails
+the next push. `setuptools` in `[build-system]` is left alone: every build
+installs the newest setuptools in an isolated environment anyway.
+
 ## Releasing
 
 The release number is written in exactly one place, `version` in
@@ -176,9 +234,11 @@ other than `pyproject.toml`, `uv.lock`, `CHANGELOG.md`, and `RELEASE_NOTES.md`
 version number so documents never go stale.
 
 ```bash
+make deps                    # newest dependencies, tested; prints their notes
 uv version --bump patch      # or minor / major; updates pyproject.toml and uv.lock
 # Rename "## Unreleased" in CHANGELOG.md to "## <version> - <date>", and add a
-# "## <version>" section to RELEASE_NOTES.md.
+# "## <version>" section to RELEASE_NOTES.md, with the Dependencies section
+# that make deps printed.
 make check                   # fails until both exist (tests/test_release_notes.py)
 make docs                    # the site builds with no broken links
 uv build                     # dist/axlib-<version>.tar.gz and the wheel
@@ -205,8 +265,9 @@ release. Each job runs only after the ones before it pass:
 1. `ci`: every check in [Continuous integration](#continuous-integration), on
    the tagged commit. Its `build` job makes the only tarball and wheel; the
    jobs below publish those files.
-2. `verify`: the tag is `v` followed by the version in `pyproject.toml`, and
-   its commit is on `main`.
+2. `verify`: the tag is `v` followed by the version in `pyproject.toml`, its
+   commit is on `main`, and `tools/dependencies.py check` passes (see
+   [Dependencies](#dependencies)).
 3. `GitHub release`: the release, with both files, and the version's section
    of `RELEASE_NOTES.md` as its notes (`tools/release_notes.py` drops the
    `## <version>` heading and raises the others one level).

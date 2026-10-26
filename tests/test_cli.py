@@ -95,14 +95,16 @@ def test_package_version_matches_project_metadata() -> None:
 
 
 # Files that legitimately contain release numbers: the single source of truth,
-# the lock file uv generates from it, the two release-history documents, and
-# PKG-INFO, the metadata file generated at the top of a source distribution.
+# the lock file uv generates from it, the two release-history documents,
+# PKG-INFO, the metadata file generated at the top of a source distribution,
+# and the dependency holds, whose dependency versions may look like ours.
 VERSIONED_FILES = {
     "pyproject.toml",
     "uv.lock",
     "CHANGELOG.md",
     "RELEASE_NOTES.md",
     "PKG-INFO",
+    "tools/dependency-holds.toml",
 }
 # Generated output: site/ is the documentation `make docs` builds, whose pages
 # name the release they were built from.

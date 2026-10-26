@@ -1,0 +1,5 @@
+# Dependencies held below their newest version, written by `make deps`
+# (tools/dependencies.py).  Each one's newest version, `failed`, made
+# `make check` fail, so pyproject.toml keeps it at `held_at` (below `failed`)
+# and the release notes say why.  `make deps` tries the newest version again
+# at every release and removes the hold once it passes.  Do not edit by hand.

@@ -6,9 +6,12 @@
 # The jobs run in this order, each only after the ones before it pass:
 #   ci      every check in ci.yml, on the tagged commit.  Its build job makes
 #           the only tarball and wheel; the later jobs publish those files.
-#   verify  the tag names the version in pyproject.toml, and its commit is on
-#           main.  (make check has already confirmed that RELEASE_NOTES.md has
-#           a section and CHANGELOG.md a dated heading for the version.)
+#   verify  the tag names the version in pyproject.toml, its commit is on
+#           main, and every dependency is at its newest version, even one
+#           published today, or held below exactly that version and named in
+#           the release notes (make deps-check).  (make check has already
+#           confirmed that RELEASE_NOTES.md has a section and CHANGELOG.md a
+#           dated heading for the version.)
 #   github  the GitHub release, with both files and the version's section of
 #           RELEASE_NOTES.md as its notes.
 #   pypi    the same files on PyPI by trusted publishing: PyPI accepts uploads
@@ -57,6 +60,10 @@ jobs:
             echo "::error::$GITHUB_REF_NAME is not on main"
             exit 1
           fi
+      # A version published since `make deps` ran stops the release too: run
+      # make deps again, commit, and move the tag (docs/DEVELOPMENT.md).
+      - name: Check that every dependency is at its newest version
+        run: python3 tools/dependencies.py check
 
   github:
     name: GitHub release

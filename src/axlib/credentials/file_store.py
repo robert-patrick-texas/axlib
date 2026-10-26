@@ -52,7 +52,7 @@ import secrets
 import stat
 import tempfile
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -68,7 +68,7 @@ try:
     import grp
     import pwd
 except ImportError:  # pragma: no cover - POSIX ownership is a Linux feature.
-    grp = None  # ty: ignore[invalid-assignment]
+    grp = None
     pwd = None
 
 from .exceptions import (
@@ -1041,7 +1041,7 @@ class CredentialFileStore:
         return parser
 
     @contextmanager
-    def _locked(self, *, exclusive: bool) -> Iterator[None]:
+    def _locked(self, *, exclusive: bool) -> Generator[None, None, None]:
         """Hold a shared or exclusive cross-process lock for one file operation.
 
         Args:
@@ -1050,7 +1050,8 @@ class CredentialFileStore:
                 concurrently.
 
         Returns:
-            Iterator[None]: Context manager that releases the lock on exit.
+            Generator[None, None, None]: Context manager that releases the lock
+                on exit.
 
         Raises:
             CredentialDependencyError: If POSIX ``fcntl`` locking is unavailable.

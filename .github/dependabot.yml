@@ -1,8 +1,9 @@
 # Propose updates to the actions the workflows use.  The workflows pin each
 # action to a commit hash with its version in a comment; Dependabot updates
 # both together, in one pull request for all of them each week.  Python
-# dependencies are not included: ruff is pinned exactly on purpose (see
-# pyproject.toml), and `uv lock --upgrade` stays a deliberate step.
+# dependencies are not included: `make deps` raises every one to its newest
+# version, tested, as the first step of each release (docs/DEVELOPMENT.md,
+# "Dependencies"), and the release workflow checks that it was done.
 version: 2
 updates:
   - package-ecosystem: github-actions

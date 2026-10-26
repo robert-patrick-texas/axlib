@@ -1,4 +1,4 @@
-.PHONY: sync format lint test docs-audit check docs clean build install-test help
+.PHONY: sync format lint test docs-audit check deps deps-check docs clean build install-test help
 
 sync:
 	uv sync --all-groups
@@ -19,6 +19,18 @@ docs-audit:
 	uv run python tools/audit_docstrings.py src
 
 check: lint docs-audit test
+
+# The first step of a release (docs/DEVELOPMENT.md, "Dependencies"): raise
+# every dependency to its newest version, run make check on each supported
+# Python, and hold back only what fails.  Prints the release notes'
+# Dependencies section.
+deps:
+	uv run python tools/dependencies.py upgrade
+
+# The release gate in release.yml: fails when a dependency has a newer version
+# than pyproject.toml asks for and no hold for exactly that version.
+deps-check:
+	uv run python tools/dependencies.py check
 
 # The documentation site, in sidebar order.  .github/workflows/docs.yml runs
 # `make docs` from each release's tag and deploys site/ to GitHub Pages.
@@ -59,6 +71,8 @@ help:
 	@echo "docs-audit   - Verify educational docstring requirements"
 	@echo "test         - Run pytest with coverage"
 	@echo "check        - Run lint, docstring audit, and tests"
+	@echo "deps         - Upgrade every dependency to its newest version that passes check"
+	@echo "deps-check   - Fail when a dependency is behind its newest version"
 	@echo "docs         - Build the HTML documentation site in site/"
 	@echo "clean        - Remove generated files"
 	@echo "build        - Build source and wheel distributions"

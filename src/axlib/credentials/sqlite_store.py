@@ -47,7 +47,7 @@ import secrets
 import sqlite3
 import stat
 import tempfile
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -58,7 +58,7 @@ try:
     import grp
     import pwd
 except ImportError:  # pragma: no cover - POSIX ownership is a Linux feature.
-    grp = None  # ty: ignore[invalid-assignment]
+    grp = None
     pwd = None
 
 from .exceptions import (
@@ -747,7 +747,7 @@ class SQLiteCredentialStore:
         *,
         read_only: bool,
         allow_create: bool = False,
-    ) -> Iterator[sqlite3.Connection]:
+    ) -> Generator[sqlite3.Connection, None, None]:
         """Open and always close one SQLite connection.
 
         Args:
@@ -758,7 +758,8 @@ class SQLiteCredentialStore:
                 CRUD operations require initialization first.
 
         Returns:
-            Iterator[sqlite3.Connection]: Context-managed database connection.
+            Generator[sqlite3.Connection, None, None]: Context-managed database
+                connection.
 
         Raises:
             CredentialBackendError: If the database is missing when creation is

@@ -429,15 +429,24 @@ def test_filter_narrows_the_table(tmp_path: Path) -> None:
     run_app(CredentialAdminApp(settings, idle_minutes=0), scenario)
 
 
-def test_idle_timeout_closes_the_app(tmp_path: Path) -> None:
-    settings = ready_settings(tmp_path)
+@pytest.mark.parametrize(
+    "idle_minutes",
+    [
+        0.002,  # about a tenth of a second: usually after the store has loaded
+        0.00001,  # under a millisecond: before the first load has finished
+    ],
+)
+def test_idle_timeout_closes_the_app(tmp_path: Path, idle_minutes: float) -> None:
+    app = CredentialAdminApp(ready_settings(tmp_path), idle_minutes=idle_minutes)
 
-    async def scenario(app: CredentialAdminApp, pilot: Pilot[None]) -> None:
-        await pilot.pause(0.5)
-        assert app.return_code == 0
+    async def drive() -> None:
+        # Not run_app(): its settle() waits for the store workers, and closing
+        # the app before they finish cancels them, so that wait would raise.
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.5)
 
-    # 0.002 minutes is about a tenth of a second.
-    run_app(CredentialAdminApp(settings, idle_minutes=0.002), scenario)
+    asyncio.run(drive())
+    assert app.return_code == 0
 
 
 def test_secret_input_refuses_to_copy_or_cut(tmp_path: Path) -> None:
