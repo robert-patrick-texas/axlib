@@ -8,6 +8,9 @@
 #   sudo ./axlib-<version>/install.sh [--with-netenv] [--with-tui] [--with-textfsm]
 #                                     [--with-markdown] [--with-all]
 #
+# Once installed, the same script installs the latest GitHub release:
+#   sudo /opt/shared/axlib/current/install.sh update [--dry-run] [--proxy URL] [-k]
+#
 # Result (defaults):
 #   /opt/shared/python           uv-managed CPython, readable by every user
 #   /opt/shared/axlib            uv project with the locked axlib environment
@@ -68,6 +71,7 @@ fi
 usage() {
     cat <<EOF
 Usage: sudo $0 [options]
+       sudo $0 update [--dry-run] [--proxy URL] [-k] [-- CURL-OPTION...]
 
 Install axlib from this unpacked release into a shared uv environment.
 Defaults below are the options of the previous run when $INSTALL_RECORD
@@ -106,15 +110,190 @@ Without --with-all, --with-tui/--no-tui, --with-textfsm/--no-textfsm,
 --with-markdown/--no-markdown, or --with-netenv/--no-netenv, the host keeps
 its current choice.
 
+Update (on a host this installer set up; it takes only these options):
+  update              download the latest axlib release from GitHub, check it
+                      against the SHA-256 digest GitHub publishes, and run its
+                      install.sh, which starts from the recorded options and
+                      keeps the configuration, key, and credential store
+  update --dry-run    only report whether a newer release exists and what
+                      update would do; exits 100 when one does, 0 when axlib
+                      is up to date.  Members of the group may run it too.
+  --proxy URL         download through this HTTP or HTTPS proxy, such as
+                      http://192.0.2.10:2055/; the new release's install.sh
+                      gets it too, as HTTPS_PROXY and HTTP_PROXY, for uv
+  -k, --insecure      accept any TLS certificate from GitHub and the proxy.
+                      The digest then comes over the same unchecked
+                      connection, so it no longer proves where the release
+                      came from; prefer -- --cacert FILE (see below)
+  -- CURL-OPTION...   pass the rest to curl, such as --cacert FILE and
+                      --proxy-cacert FILE with a break-and-inspect proxy's
+                      CA certificate
+
 Environment:
   UV                  path to the uv binary (default: the uv of the previous
                       run, else uv on PATH)
+  UPDATE_URL          GitHub API address of the latest release, for update
+                      (default: $UPDATE_URL)
 EOF
 }
 
 say() { printf '==> %s\n' "$*"; }
 warn() { printf 'install.sh: warning: %s\n' "$*" >&2; }
 die() { printf 'install.sh: error: %s\n' "$*" >&2; exit 1; }
+
+# ------------------------------------------------------------------- update
+# `install.sh update` installs the latest release with the new release's own
+# install.sh, which starts from the recorded options like any upgrade, so the
+# configuration, key, and store are kept.  The tarball must match the SHA-256
+# digest GitHub publishes for it before anything in it runs as root.
+UPDATE_URL=${UPDATE_URL:-https://api.github.com/repos/robert-patrick-texas/axlib/releases/latest}
+# The exit status of `update --dry-run` when a newer release exists, as with
+# `dnf check-update`, so a monitoring job can tell it from an error.
+UPDATE_AVAILABLE=100
+UPDATE_DIR=
+# curl and the options it is given, set by run_update.
+CURL=()
+
+# The axlib version in the shared environment, not the one of this script.
+installed_version() {
+    "$PREFIX/.venv/bin/python" -I -c \
+        'from importlib.metadata import version; print(version("axlib"))'
+}
+
+# Reads GitHub's JSON description of a release and prints "VERSION NOTES_URL
+# TARBALL_URL DIGEST".  The environment's Python reads it, so no jq is needed.
+release_info() {
+    "$PREFIX/.venv/bin/python" -I -c '
+import json, sys
+try:
+    release = json.load(sys.stdin)
+    tag, notes, assets = release["tag_name"], release["html_url"], release["assets"]
+except (ValueError, KeyError, TypeError) as error:
+    sys.exit(f"not a GitHub release: {error!r}")
+version = tag.removeprefix("v")
+name = f"axlib-{version}.tar.gz"
+asset = next((a for a in assets if a.get("name") == name), None)
+if asset is None:
+    sys.exit(f"release {tag} has no {name}")
+print(version, notes, asset["browser_download_url"], asset.get("digest") or "-")
+'
+}
+
+# version_newer A B: A is a later version than B.
+version_newer() {
+    [ "$1" != "$2" ] && [ "$(printf '%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
+}
+
+run_update() {
+    local dry_run=0 proxy='' insecure=0 curl_options=() via='' tls_note='' uv_note=''
+    local installed json status info latest notes url digest tarball
+    while [ $# -gt 0 ]; do
+        case $1 in
+        --dry-run) dry_run=1 ;;
+        --proxy) proxy=${2:?--proxy needs a URL}; shift ;;
+        --proxy=*) proxy=${1#--proxy=}; [ -n "$proxy" ] || die "--proxy needs a URL." ;;
+        -k | --insecure) insecure=1 ;;
+        # Only after --, so a mistyped update option is not handed to curl.
+        --) shift; curl_options=("$@"); break ;;
+        -h | --help) usage; exit 0 ;;
+        *) usage >&2; die "unknown update option: $1 (options for curl go after --)." ;;
+        esac
+        shift
+    done
+    [ "$dry_run" -eq 1 ] || [ "$(id -u)" -eq 0 ] ||
+        die "run as root (sudo $0 update), or check with $0 update --dry-run."
+    [ "$RECORDED" -eq 1 ] || die "cannot read $INSTALL_RECORD.  Install axlib with install.sh first; to check for updates without root, be a member of the group that owns its directory."
+    [ -x "$PREFIX/.venv/bin/python" ] || die "no axlib environment in $PREFIX."
+    command -v curl >/dev/null || die "update needs curl (apt-get install curl, or dnf install curl)."
+
+    CURL=(curl -fsSL --retry 2)
+    if [ -n "$proxy" ]; then
+        CURL+=(--proxy "$proxy")
+        # Shown without a password, as in http://user:***@proxy/.
+        via=" through $(printf '%s' "$proxy" | sed 's#//\([^/:@]*\):[^/@]*@#//\1:***@#')"
+        uv_note=$'\n     uv downloads through the same proxy (HTTPS_PROXY and HTTP_PROXY).'
+    fi
+    if [ "$insecure" -eq 1 ]; then
+        CURL+=(--insecure)
+        [ -z "$proxy" ] || CURL+=(--proxy-insecure)
+        tls_note=$'\n     TLS certificates are not checked (-k).'
+        warn "-k: TLS certificates are not checked.  The digest comes over the same
+  connection as the release, so anyone between this host and GitHub could
+  replace both.  Prefer: -- --cacert FILE --proxy-cacert FILE"
+    fi
+    CURL+=(${curl_options[@]+"${curl_options[@]}"})
+
+    installed=$(installed_version) || die "cannot read the axlib version in $PREFIX/.venv."
+    json=$("${CURL[@]}" -H 'Accept: application/vnd.github+json' "$UPDATE_URL") || {
+        status=$?
+        # 60: a certificate on the way, GitHub's or the proxy's, is not trusted.
+        [ "$status" -ne 60 ] || die "curl does not trust a TLS certificate on the way to
+  $UPDATE_URL.  Behind a TLS-inspecting proxy, add its CA certificate to this
+  host's trust store, or give it with -- --cacert FILE --proxy-cacert FILE
+  (docs/INSTALL.md, \"Through a proxy\")."
+        die "cannot read the latest release from $UPDATE_URL."
+    }
+    info=$(release_info <<<"$json") || die "$UPDATE_URL did not describe an axlib release."
+    read -r latest notes url digest <<<"$info"
+    # The version names files and directories below.
+    case $latest in '' | *[!0-9A-Za-z.]*) die "unexpected release version: $latest" ;; esac
+    say "Installed: axlib $installed in $PREFIX"
+    say "Latest release: axlib $latest ($notes)${via}"
+    if [ "$latest" = "$installed" ]; then
+        printf 'axlib %s is up to date.\n' "$installed"
+        exit 0
+    elif ! version_newer "$latest" "$installed"; then
+        printf 'axlib %s is newer than the latest release; nothing to do.\n' "$installed"
+        exit 0
+    fi
+    case $digest in
+    sha256:*) ;;
+    *) die "GitHub publishes no SHA-256 digest for $url, so it cannot be checked." ;;
+    esac
+
+    if [ "$dry_run" -eq 1 ]; then
+        cat <<EOF
+
+axlib $latest is available.  Without --dry-run, update would:
+  1. Download $url${via}
+     and check it against GitHub's digest, $digest.${tls_note}
+  2. Unpack it in a temporary directory and run its install.sh, which starts
+     from the options in $INSTALL_RECORD:
+     $(grep -E '^(WITH_[A-Z_]+|CREATE_STORE)=' "$INSTALL_RECORD" | paste -s -d ' ' -)${uv_note}
+  3. Keep ${CONFIG_FILE:-$CONFIG_DIR/axlib.toml}, the credential stores and
+     their keys, and the libraries added with axuv.
+  4. Keep axlib $installed in $PREFIX/releases for a rollback.
+
+Release notes: $notes
+EOF
+        exit "$UPDATE_AVAILABLE"
+    fi
+
+    UPDATE_DIR=$(mktemp -d)
+    trap 'rm -rf "$UPDATE_DIR"' EXIT
+    tarball=$UPDATE_DIR/axlib-$latest.tar.gz
+    say "Downloading $url${via}"
+    "${CURL[@]}" -o "$tarball" "$url" || die "cannot download $url."
+    say "Checking it against GitHub's digest, $digest"
+    [ "sha256:$(sha256sum "$tarball" | cut -d ' ' -f 1)" = "$digest" ] ||
+        die "$url does not match GitHub's digest; it was not installed."
+    tar -xzf "$tarball" -C "$UPDATE_DIR" --no-same-owner
+    [ -x "$UPDATE_DIR/axlib-$latest/install.sh" ] ||
+        die "axlib-$latest.tar.gz has no axlib-$latest/install.sh."
+    say "Running the install.sh of axlib $latest"
+    # uv downloads Python and packages through the same proxy.  Both spellings,
+    # since programs differ in which one they read first.
+    if [ -n "$proxy" ]; then
+        export http_proxy=$proxy https_proxy=$proxy HTTP_PROXY=$proxy HTTPS_PROXY=$proxy
+    fi
+    "$UPDATE_DIR/axlib-$latest/install.sh"
+    exit 0
+}
+
+if [ "${1:-}" = update ]; then
+    shift
+    run_update "$@"
+fi
 
 while [ $# -gt 0 ]; do
     case $1 in
@@ -485,6 +664,7 @@ axlib $VERSION is installed.
   Python:        $PREFIX/.venv/bin/python   (use as the #! line of ax.getkeys() scripts)
   Libraries:     $SBIN_DIR/axuv add netmiko scrapli   (root; uv on the shared environment)
   Options:       $INSTALL_RECORD   (the next install.sh run starts from these)
+  Updates:       $PREFIX/current/install.sh update --dry-run   (checks GitHub)
   Docs:          $PREFIX/current/docs/
 EOF
 if [ "$WITH_TEXTFSM" -eq 1 ]; then

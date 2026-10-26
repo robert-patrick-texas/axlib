@@ -75,6 +75,8 @@ keeps new files in the `netops` group.
   optional part chosen below (`textual` and `rich`; `textfsm` and
   `ntc-templates`; `markdown-it-py`, `linkify-it-py`, and `mdit-py-plugins`).
   See [Offline hosts](#offline-hosts).
+- `curl`, and access to `api.github.com` and `github.com`, only for
+  `install.sh update` (see [Upgrading axlib](#upgrading-axlib)).
 - About 150 MB in `/opt/shared`.
 
 ## Options
@@ -386,8 +388,108 @@ longer listed.
 
 ### Upgrading axlib
 
-Unpack the new release and run its installer. No options are needed: it
-starts from the options recorded by the previous run (see
+The installer of the release in `current` can upgrade axlib to the latest
+release on GitHub. First see whether there is one and what the update would
+do:
+
+```console
+$ /opt/shared/axlib/current/install.sh update --dry-run
+==> Installed: axlib <installed> in /opt/shared/axlib
+==> Latest release: axlib <latest> (https://github.com/robert-patrick-texas/axlib/releases/tag/v<latest>)
+
+axlib <latest> is available.  Without --dry-run, update would:
+  1. Download https://github.com/robert-patrick-texas/axlib/releases/download/v<latest>/axlib-<latest>.tar.gz
+     and check it against GitHub's digest, sha256:...
+  2. Unpack it in a temporary directory and run its install.sh, which starts
+     from the options in /etc/axlib/install.env:
+     WITH_ALL='1' WITH_TUI='1' WITH_TEXTFSM='1' WITH_MARKDOWN='1' WITH_NETENV='0' CREATE_STORE='1'
+  3. Keep /etc/axlib/axlib.toml, the credential stores and
+     their keys, and the libraries added with axuv.
+  4. Keep axlib <installed> in /opt/shared/axlib/releases for a rollback.
+
+Release notes: https://github.com/robert-patrick-texas/axlib/releases/tag/v<latest>
+```
+
+`--dry-run` changes nothing and needs no root: any member of `netops` can run
+it. It exits with status 0 when axlib is up to date and 100 when a newer
+release exists, so a monitoring job can run it on a schedule. Read the release
+notes, then update:
+
+```bash
+sudo /opt/shared/axlib/current/install.sh update
+```
+
+`update` downloads the release tarball from GitHub and stops unless its
+SHA-256 digest matches the one GitHub publishes for it. If curl does not
+trust a certificate on the way, it says so and stops (see
+[Through a proxy](#through-a-proxy)). Then it unpacks the
+tarball in a temporary directory and runs that release's `install.sh` with no
+options, which is the same upgrade as installing from a tarball by hand
+(below). The digest catches a damaged or altered download, but not a release
+published by someone who took over the GitHub project; read the release notes
+before you update. `update` compares the version in the shared environment, so
+after a rollback it offers the newer release again. It takes no installer
+options: to change one, run `install.sh` with it after the update. The
+environment variable `UPDATE_URL` points it at another copy of GitHub's
+description of the latest release (default:
+`https://api.github.com/repos/robert-patrick-texas/axlib/releases/latest`).
+
+#### Through a proxy
+
+On a network where GitHub is reached through a proxy, give it with
+`--proxy`, as an `http://` or `https://` URL:
+
+```bash
+sudo /opt/shared/axlib/current/install.sh update --proxy=http://192.0.2.10:2055/
+sudo /opt/shared/axlib/current/install.sh update --dry-run --proxy https://192.0.2.20:443/
+```
+
+`update` downloads through it, and passes it to the new release's
+`install.sh` as `HTTPS_PROXY` and `HTTP_PROXY`, so uv downloads Python and
+packages through it too. Set `NO_PROXY` in the same command for hosts that
+must be reached directly, such as an internal package mirror:
+`sudo NO_PROXY=pypi.example.internal /opt/shared/axlib/current/install.sh update --proxy=...`.
+The output shows the proxy with its password, if any, replaced by `***`, but
+other users can see the whole command line, password included, while it
+runs.
+
+A proxy that inspects TLS (break and inspect) presents its own certificates,
+signed by the organization's CA. If the host does not trust that CA, curl
+refuses the connection. The best fix is to add the CA certificate to the
+host's trust store (`/usr/local/share/ca-certificates/` and
+`update-ca-certificates` on Debian and Ubuntu, `/etc/pki/ca-trust/source/anchors/`
+and `update-ca-trust` on RHEL), since curl reads that store. Otherwise give
+curl the certificate after `--`, which passes everything after it to curl as
+written:
+
+```bash
+sudo /opt/shared/axlib/current/install.sh update --proxy=https://192.0.2.20:443/ \
+    -- --cacert /etc/pki/corp-inspection-ca.pem --proxy-cacert /etc/pki/corp-inspection-ca.pem
+```
+
+`--cacert` covers GitHub's certificates as the proxy presents them, and
+`--proxy-cacert` the certificate of an `https://` proxy itself. Only options
+after `--` reach curl, so a mistyped `update` option is an error, not a curl
+option.
+
+`-k` (`--insecure`) makes curl accept any certificate, from GitHub and from an
+`https://` proxy. Use it only when the CA certificate cannot be had. The
+SHA-256 digest that `update` checks comes from GitHub over the same unchecked
+connection as the release, so with `-k` anyone between the host and GitHub,
+not only the proxy, could replace both, and the replaced `install.sh` would
+run as root. `update` prints a warning each time `-k` is used.
+
+`--proxy`, `-k`, and the options after `--` apply to `update`'s own two
+downloads with curl. uv, which the new release's installer runs, uses its own
+TLS settings, as during the first install: with a TLS-inspecting proxy, put
+`system-certs = true` in `/etc/uv/uv.toml` (`native-tls = true` in older uv
+releases) so uv also trusts the CA in the host's trust store (see
+[Offline hosts](#offline-hosts)).
+
+To upgrade by hand, for example on a host without access to GitHub or from a
+release whose installer has no `update` command, unpack the new
+release and run its installer. No options are needed: it starts from the
+options recorded by the previous run (see
 [Recorded options](#recorded-options)).
 
 ```bash

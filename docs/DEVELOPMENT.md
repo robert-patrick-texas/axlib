@@ -250,14 +250,24 @@ and runs again inside the container, as root. A fresh install uses
 `--with-all`, then checks that `axlib version` prints the release, `current`
 points at it, `axlib credentials network` can read its configuration,
 `WITH_ALL` and each optional part are recorded in `/etc/axlib/install.env`,
-and each part is importable. A second run with `--no-textfsm` must record
-`WITH_ALL='0'`, uninstall ntc-templates, and keep the other parts. With
-`FROM`, it installs the old release with the credential manager only,
+and each part is importable. `install.sh update --dry-run`, as root and as a
+member of `netops`, must find it up to date. A second run with `--no-textfsm`
+must record `WITH_ALL='0'`, uninstall ntc-templates, and keep the other parts.
+With `FROM`, it installs the old release with the credential manager only,
 upgrades and adds parsing and Markdown (checking that the recorded option
 kept the credential manager), rolls back as
 [INSTALL.md](INSTALL.md#rolling-back-axlib) describes, and upgrades again
-with no options. A run downloads Python and packages and takes
-about two minutes. `INSTALL_TEST_IMAGE` selects another image, and CI runs
+with the new release's `install.sh update`. A static web server on
+`127.0.0.1`, named by `UPDATE_URL`, stands in for GitHub's API and offers the
+new tarball. The update must refuse it while the published digest is wrong,
+exit with status 100 from `--dry-run`, refuse the stand-in's self-signed
+HTTPS certificate unless given `-k` (with a warning) or
+`-- --cacert FILE`, and refuse a mistyped option. Then it must install the
+release through tinyproxy with `--proxy`: the proxy's log has to show the
+release, the tarball, and uv's `CONNECT pypi.org:443` (the uv cache is
+emptied first, so uv must download), and the update must keep `axlib.toml`,
+the key, and a credential record. A run downloads Python and packages and
+takes about two minutes. `INSTALL_TEST_IMAGE` selects another image, and CI runs
 both tests on every push, upgrading from the previous release.
 
 ## Credential administration layers
