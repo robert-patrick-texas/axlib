@@ -1,0 +1,8 @@
+# actionlint settings.  release.yml calls this repository's own workflows
+# with `uses: $/...`, GitHub's self-repository syntax (July 2026), which
+# actionlint 1.7.12 does not know yet and reports as a malformed reusable
+# workflow call.  Remove this once actionlint accepts `$/`.
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'reusable workflow call "\$/\.github/workflows/[a-z]+\.yml" at "uses" is not following the format'

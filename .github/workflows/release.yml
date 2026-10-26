@@ -37,8 +37,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # $/ is GitHub's self-repository syntax: this repository at the commit that
+  # is running, read from GitHub rather than from files in the workspace, and
+  # counted as pinned like the actions' commit hashes.
   ci:
-    uses: ./.github/workflows/ci.yml
+    uses: $/.github/workflows/ci.yml
 
   verify:
     runs-on: ubuntu-latest
@@ -117,4 +120,4 @@ jobs:
       contents: read # check out the tag
       pages: write # deploy to GitHub Pages
       id-token: write # prove to Pages which workflow is deploying
-    uses: ./.github/workflows/docs.yml
+    uses: $/.github/workflows/docs.yml

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The release workflow calls its own CI and documentation workflows with GitHub's self-repository syntax, `uses: $/...`, instead of `./...`: GitHub reads them from the commit being released rather than from the workspace, and counts them as pinned like the actions' commit hashes (zizmor's `self-repository` audit). `.github/actionlint.yaml` ignores actionlint's report of that syntax as malformed until actionlint knows it.
+
 ## 1.0.9 - 2026-10-26
 
 - Added `install.sh update`, which upgrades a host set up by `install.sh` to the latest release on GitHub. It compares the axlib version in the shared environment with GitHub's latest release, downloads that release's tarball, stops unless its SHA-256 digest matches the digest GitHub publishes, and runs the new release's `install.sh`, which starts from the recorded options and keeps the configuration, keys, credential stores, and libraries added with `axuv`. `update --dry-run` changes nothing and needs no root (members of `netops` can run it): it reports the installed and latest versions and, when a newer release exists, the steps the update would take, and exits 100 instead of 0. `UPDATE_URL` names another copy of GitHub's API reply. `update` needs `curl`. The installer's summary lists the check command.
