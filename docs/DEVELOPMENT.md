@@ -247,14 +247,16 @@ make install-test FROM=path/to/axlib-<old-version>.tar.gz  # an upgrade
 
 The script mounts itself, the tarballs, and the host's `uv` binary read-only
 and runs again inside the container, as root. A fresh install uses
-`--with-tui --with-textfsm --with-markdown`, then checks that `axlib version`
-prints the release, `current` points at it, `axlib credentials network` can
-read its configuration, and each optional part is recorded in
-`/etc/axlib/install.env` and importable. With `FROM`, it installs the old
-release with the credential manager only, upgrades and adds parsing and
-Markdown (checking that the recorded option kept the credential manager),
-rolls back as [INSTALL.md](INSTALL.md#rolling-back-axlib) describes, and
-upgrades again with no options. A run downloads Python and packages and takes
+`--with-all`, then checks that `axlib version` prints the release, `current`
+points at it, `axlib credentials network` can read its configuration,
+`WITH_ALL` and each optional part are recorded in `/etc/axlib/install.env`,
+and each part is importable. A second run with `--no-textfsm` must record
+`WITH_ALL='0'`, uninstall ntc-templates, and keep the other parts. With
+`FROM`, it installs the old release with the credential manager only,
+upgrades and adds parsing and Markdown (checking that the recorded option
+kept the credential manager), rolls back as
+[INSTALL.md](INSTALL.md#rolling-back-axlib) describes, and upgrades again
+with no options. A run downloads Python and packages and takes
 about two minutes. `INSTALL_TEST_IMAGE` selects another image, and CI runs
 both tests on every push, upgrading from the previous release.
 

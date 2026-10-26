@@ -6,7 +6,7 @@
 #
 #   tar xzf axlib-<version>.tar.gz
 #   sudo ./axlib-<version>/install.sh [--with-netenv] [--with-tui] [--with-textfsm]
-#                                     [--with-markdown]
+#                                     [--with-markdown] [--with-all]
 #
 # Result (defaults):
 #   /opt/shared/python           uv-managed CPython, readable by every user
@@ -51,6 +51,8 @@ WITH_TUI=
 WITH_TEXTFSM=
 WITH_MARKDOWN=
 WITH_NETENV=
+# 1 turns every optional part on, now and in later runs (see below).
+WITH_ALL=0
 CREATE_STORE=1
 UV_BIN=
 
@@ -89,6 +91,10 @@ Options:
   --with-markdown     also install Markdown-to-HTML conversion, axlib md2html
                       (axlib[markdown]: markdown-it-py)
   --no-markdown       remove Markdown-to-HTML conversion
+  --with-all          install every optional part above, now and in later runs,
+                      including parts a newer release adds; a later --no-
+                      option for one part (such as --no-tui) leaves that part
+                      out and ends --with-all.  It does not include --with-netenv.
   --with-netenv       load NETUSER/NETPASS/NETENABLE at every interactive login
                       (/etc/profile.d/axlib-netenv.sh; read docs/NETENV.md first)
   --no-netenv         remove that login snippet
@@ -96,7 +102,7 @@ Options:
   --store             create or verify the SQLite store (the default)
   -h, --help          show this help
 
-Without --with-tui/--no-tui, --with-textfsm/--no-textfsm,
+Without --with-all, --with-tui/--no-tui, --with-textfsm/--no-textfsm,
 --with-markdown/--no-markdown, or --with-netenv/--no-netenv, the host keeps
 its current choice.
 
@@ -120,12 +126,13 @@ while [ $# -gt 0 ]; do
     --sbin-dir) SBIN_DIR=${2:?--sbin-dir needs a directory}; shift ;;
     --config-dir) CONFIG_DIR=${2:?--config-dir needs a directory}; shift ;;
     --data-dir) DATA_DIR=${2:?--data-dir needs a directory}; shift ;;
+    --with-all) WITH_ALL=1 ;;
     --with-tui) WITH_TUI=1 ;;
-    --no-tui) WITH_TUI=0 ;;
+    --no-tui) WITH_TUI=0 WITH_ALL=0 ;;
     --with-textfsm) WITH_TEXTFSM=1 ;;
-    --no-textfsm) WITH_TEXTFSM=0 ;;
+    --no-textfsm) WITH_TEXTFSM=0 WITH_ALL=0 ;;
     --with-markdown) WITH_MARKDOWN=1 ;;
-    --no-markdown) WITH_MARKDOWN=0 ;;
+    --no-markdown) WITH_MARKDOWN=0 WITH_ALL=0 ;;
     --with-netenv) WITH_NETENV=1 ;;
     --no-netenv) WITH_NETENV=0 ;;
     --no-store) CREATE_STORE=0 ;;
@@ -186,6 +193,13 @@ has_extra() {
     *) return 1 ;;
     esac
 }
+
+# --with-all, given now or recorded, turns every optional part on; a --no-
+# option clears it.  A part that a later release adds belongs in this list
+# too, so upgrading a host installed with --with-all also installs that part.
+if [ "$WITH_ALL" -eq 1 ]; then
+    WITH_TUI=1 WITH_TEXTFSM=1 WITH_MARKDOWN=1
+fi
 
 # Options not given and not recorded keep what the host has, so the first run
 # of this installer on a host set up by an older one changes nothing unasked.
@@ -395,6 +409,7 @@ SBIN_DIR='$SBIN_DIR'
 CONFIG_DIR='$CONFIG_DIR'
 DATA_DIR='$DATA_DIR'
 CONFIG_FILE='$AXLIB_CONFIG_FILE'
+WITH_ALL='$WITH_ALL'
 WITH_TUI='$WITH_TUI'
 WITH_TEXTFSM='$WITH_TEXTFSM'
 WITH_MARKDOWN='$WITH_MARKDOWN'

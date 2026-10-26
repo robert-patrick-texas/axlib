@@ -96,6 +96,7 @@ sudo ./install.sh [options]
 | `--with-tui` / `--no-tui` | off | Install or remove the full-screen credential manager (`axlib credential-tui`) |
 | `--with-textfsm` / `--no-textfsm` | off | Install or remove show-command parsing (`axlib parse`: TextFSM and the ntc-templates collection, about 5 MB), and create `/etc/axlib/textfsm` for shared templates. `--no-textfsm` keeps the templates. |
 | `--with-markdown` / `--no-markdown` | off | Install or remove Markdown-to-HTML conversion (`axlib md2html`: markdown-it-py and two small companions, under 1 MB). See [MARKDOWN.md](MARKDOWN.md). |
+| `--with-all` | off | Install every optional part above (`--with-tui`, `--with-textfsm`, and `--with-markdown`), and keep doing so on later runs, including any part a newer release adds. A later `--no-` option for one part, such as `--no-tui`, leaves that part out and ends `--with-all`. It does not include `--with-netenv`. |
 | `--with-netenv` / `--no-netenv` | off | Install or remove the login snippet that exports `NETUSER`/`NETPASS`/`NETENABLE` in every interactive login. `/etc/profile.d` is read by login shells, such as an SSH session. Read [NETENV.md](NETENV.md) first. |
 | `--no-store` / `--store` | store on | Skip, or go back to, creating and verifying the SQLite store and key. Skip it when using the encrypted text store instead. With `--no-store`, a new `axlib.toml` has `enabled = false` under `[sqlite]`. An existing `axlib.toml` is never changed, so edit its `enabled` line yourself. To add the store later, set `enabled = true` and run the installer with `--store`. |
 
@@ -133,6 +134,7 @@ SBIN_DIR='/usr/local/sbin'
 CONFIG_DIR='/etc/axlib'
 DATA_DIR='/var/lib/axlib'
 CONFIG_FILE='/etc/axlib/axlib.toml'
+WITH_ALL='1'
 WITH_TUI='1'
 WITH_TEXTFSM='1'
 WITH_MARKDOWN='1'
@@ -149,6 +151,11 @@ Three programs read it:
 - `axuv` takes the environment's location and the shared Python from it.
 - The `axlib` command and `ax.getkeys()` use `CONFIG_FILE` when neither
   `--config` nor `AXLIB_CONFIG_FILE` names a configuration file.
+
+`WITH_ALL='1'` is the record of `--with-all`. It turns every optional part on
+at each run, so upgrading such a host to a release that adds an optional part
+installs that part too. A run with a `--no-` option for one part sets it back
+to `0` and keeps the other parts as they are.
 
 To change an option, run the installer again with the new option rather than
 editing the file. On a host installed by an older installer that wrote no

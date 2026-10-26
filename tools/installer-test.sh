@@ -11,7 +11,9 @@
 # run on the development host.  This script starts a throwaway Ubuntu
 # container with Docker, mounts itself, the release tarballs, and the host's
 # uv binary read-only, and runs again inside the container, as root, where it
-# installs the release with every optional part and checks the result.
+# installs the release with every optional part (--with-all), checks the
+# result, then removes parsing (--no-textfsm) and checks that only parsing
+# and the recorded --with-all are gone.
 #
 # With --from, it tests what an administrator does instead:
 #   1. install the old release with the credential manager (--with-tui),
@@ -89,10 +91,15 @@ install_release() {
     "/tmp/axlib-$version/install.sh" "$@"
 }
 
+# check_recorded OPTION VALUE: install.env records OPTION='VALUE'.
+check_recorded() {
+    grep -qx "$1='$2'" "$INSTALL_RECORD" || die "$INSTALL_RECORD lacks $1='$2'"
+}
+
 # check_release VERSION PART...: the axlib command runs VERSION, current names
 # it, and each optional PART (tui, textfsm, markdown) is recorded and importable.
 check_release() {
-    local version=$1 part module recorded status=0
+    local version=$1 part module status=0
     shift
     say "Checking axlib $version${*:+ with $*}"
     [ "$(axlib version)" = "$version" ] || die "axlib version printed $(axlib version), not $version"
@@ -109,8 +116,7 @@ check_release() {
         markdown) module=markdown_it ;;
         *) die "unknown optional part: $part" ;;
         esac
-        recorded="WITH_${part^^}='1'"
-        grep -qx "$recorded" "$INSTALL_RECORD" || die "$INSTALL_RECORD lacks $recorded"
+        check_recorded "WITH_${part^^}" 1
         "$PREFIX/.venv/bin/python" -c "import $module" || die "$module is not installed"
     done
 }
@@ -123,8 +129,18 @@ in_container() {
     for tarball in /releases/*.tar.gz; do tar xzf "$tarball"; done
 
     if [ -z "$old" ]; then
-        install_release "$new" --with-tui --with-textfsm --with-markdown
+        install_release "$new" --with-all
         check_release "$new" tui textfsm markdown
+        check_recorded WITH_ALL 1
+
+        # Not --no-markdown: rich and textual need markdown-it-py too.
+        install_release "$new" --no-textfsm
+        check_release "$new" tui markdown
+        check_recorded WITH_ALL 0
+        check_recorded WITH_TEXTFSM 0
+        if "$PREFIX/.venv/bin/python" -c "import ntc_templates" 2>/dev/null; then
+            die "--no-textfsm left ntc_templates installed"
+        fi
     else
         install_release "$old" --with-tui
         check_release "$old" tui

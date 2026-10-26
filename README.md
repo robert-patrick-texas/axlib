@@ -58,7 +58,7 @@ tar xzf axlib-<version>.tar.gz
 sudo ./axlib-<version>/install.sh
 ```
 
-The installer records its options in `/etc/axlib/install.env`, so the `axlib` command finds `/etc/axlib/axlib.toml` without `--config`, and upgrades need no options. `--with-tui`, `--with-textfsm`, and `--with-markdown` add the optional parts below. Administrators add libraries such as netmiko for every script with `sudo axuv add netmiko`; `axuv` runs uv on the shared environment with the installer's settings. See [docs/INSTALL.md](docs/INSTALL.md) for options, upgrades, rollback, and backups.
+The installer records its options in `/etc/axlib/install.env`, so the `axlib` command finds `/etc/axlib/axlib.toml` without `--config`, and upgrades need no options. `--with-tui`, `--with-textfsm`, and `--with-markdown` add the optional parts below, and `--with-all` adds every one of them, including any that a later release adds. Administrators add libraries such as netmiko for every script with `sudo axuv add netmiko`; `axuv` runs uv on the shared environment with the installer's settings. See [docs/INSTALL.md](docs/INSTALL.md) for options, upgrades, rollback, and backups.
 
 Runtime dependencies are limited to `cryptography` and `redis`. Redis is imported only when caching is enabled. The optional `tui` extra adds `textual` and `rich`, the optional `textfsm` extra adds `textfsm` and `ntc-templates`, and the optional `markdown` extra adds `markdown-it-py`, `linkify-it-py`, and `mdit-py-plugins`.
 

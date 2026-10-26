@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added `install.sh --with-all`, which installs every optional part (`--with-tui`, `--with-textfsm`, and `--with-markdown`) and is recorded as `WITH_ALL`, so every later run, including an upgrade to a release that adds an optional part, installs every part too. A `--no-` option for one part, given after it or in a later run, leaves that part out and sets `WITH_ALL` back to `0`. It does not include `--with-netenv`.
+- `make install-test` installs a fresh release with `--with-all`, then runs `--no-textfsm` and checks that only parsing is removed and `WITH_ALL` is turned off.
+
 ## 1.0.8 - 2026-10-24
 
 - `axlib radius` works over IPv4 and IPv6. A server name with several addresses, such as an IPv6 and an IPv4 address, is tried at each in turn, in the order the resolver prefers, until one answers. Before, only the first address was tried, so a server listening on IPv4 only was reported as not listening when its name resolved to IPv6 first (as `localhost` does on GitHub's runners, which is how CI found it). An address is passed over when it reports the port closed, cannot be reached, or stays silent through every retry; a reply that fails verification still ends the check at once.
