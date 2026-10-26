@@ -2,6 +2,88 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.9
+
+### Overview
+
+A shared host can now upgrade itself. `install.sh update` installs the latest release from GitHub once it matches the SHA-256 digest GitHub publishes for it, and keeps the configuration, keys, and credential stores; `update --dry-run` only reports whether there is one. Both work through a proxy, including one that inspects TLS. `install.sh --with-all` installs every optional part, now and in later releases. From this release on, each release references, and is tested with, the newest version of every dependency, so this one raises the lower bounds of `cryptography`, `redis`, `markdown-it-py`, and `mdit-py-plugins`. No storage format changes.
+
+### Updating a shared host from GitHub
+
+```bash
+/opt/shared/axlib/current/install.sh update --dry-run   # is there a newer release? no root needed
+sudo /opt/shared/axlib/current/install.sh update        # install it
+```
+
+- **`update`** compares the axlib version in the shared environment with GitHub's latest release, downloads that release's tarball, and stops unless the tarball matches the digest GitHub publishes. Then it runs the new release's `install.sh`, which starts from the options recorded in `/etc/axlib/install.env`, like any upgrade: `axlib.toml`, the keys, the credential stores, and the libraries added with `axuv` are kept, and the previous release stays in `releases/` for a rollback.
+- **`--dry-run`** changes nothing and needs no root, so any member of `netops` can run it. It lists the download, the digest, the recorded options, and what is kept, with a link to the release notes. It exits with status 100 when a newer release exists and 0 when axlib is up to date, so a monitoring job can run it on a schedule.
+- **`--proxy URL`** (or `--proxy=URL`) downloads through an HTTP or HTTPS proxy and passes it to the new release's installer as `HTTPS_PROXY` and `HTTP_PROXY`, so uv downloads Python and packages through it too.
+- **Behind a TLS-inspecting proxy**, give curl the organization's CA certificate after `--`, which passes the rest of the command line to curl: `update --proxy=URL -- --cacert FILE --proxy-cacert FILE`. `-k` accepts any certificate instead, and warns each time it is used: the digest then arrives over the same unchecked connection as the release, so it no longer proves where the release came from. When curl does not trust a certificate, `update` says so and names these fixes.
+- `update` needs `curl` and access to `api.github.com` and `github.com`. `docs/INSTALL.md` ("Upgrading axlib" and "Through a proxy") has the details.
+
+**1.0.8 and earlier have no `update`**, so a shared host moves to 1.0.9 from the tarball, as before, and uses `update` from then on:
+
+```bash
+tar xzf axlib-1.0.9.tar.gz
+sudo ./axlib-1.0.9/install.sh
+```
+
+### Every optional part: `--with-all`
+
+`sudo ./install.sh --with-all` installs the credential manager, show-command parsing, and Markdown conversion. It is recorded as `WITH_ALL='1'`, so a later upgrade to a release that adds an optional part installs that part too. A `--no-` option for one part, given after it or in a later run, leaves that part out and turns `--with-all` off. It does not include `--with-netenv`, which puts every operator's password in every login's environment: a policy for the host owner, not a feature.
+
+### Dependencies
+
+Each release now references, and is tested with, the newest version of every direct dependency, even one published the same day. A dependency whose newest version fails the tests is held at the last version that passed, named in its release's notes, and tried again at the next release; the release workflow refuses to publish when a dependency is behind without such a hold.
+
+Every dependency is at its newest version, tested with `make check` on Python 3.11, 3.12, 3.13, and 3.14. Nothing is held.
+
+- **Raised lower bounds:** `cryptography>=50.0.2` (was `>=42`) and `redis>=8.1.0` (was `>=5`); for `axlib[markdown]`, `markdown-it-py[linkify]>=4.2.0` (was `>=4.0`) and `mdit-py-plugins>=0.6.1` (was `>=0.5`). The other extras already required their newest versions: `rich` 15.0.0, `textual` 8.2.8, `ntc-templates` 9.3.0, and `textfsm` 2.1.0.
+- **Development tools:** `ruff` 0.17.2 (was 0.16.7), `ty` 0.0.92 (was 0.0.80), `pytest` 9.1.1, and `pytest-cov` 7.1.0.
+
+### For anyone working on axlib
+
+- **`make deps`** is the first step of a release. It raises every dependency to its newest version, upgrades `uv.lock`, runs `make check` on each supported Python, holds back only a dependency whose newest version fails (recorded in `tools/dependency-holds.toml`), and prints the Dependencies section for the release notes. A failing run is repeated once and counts only if it fails again.
+- **`make deps-check`** is the new release gate in `release.yml`: it fails when a dependency is behind its newest version without a hold for exactly that version, or when the release notes do not name a held dependency. `make check` also fails on an upper bound added to `pyproject.toml` by hand.
+- **ruff** stays pinned exactly, but moves to its newest release through `make deps`.
+- **`make install-test`** also tests `install.sh update` against a stand-in for GitHub: a tarball that does not match its digest is refused, `--dry-run` exits 100, a self-signed certificate is refused unless `-k` or `-- --cacert` is given, and the update runs through a proxy (tinyproxy) with `--proxy`, uv's downloads included, keeping `axlib.toml`, the key, and a credential record. It also tests `--with-all`, `--no-textfsm`, and `update --dry-run` as a member of `netops`.
+- Fixed a race in the TUI's idle-timeout test, which failed when the app closed before its first store load finished.
+
+### Compatibility
+
+- **Newer dependencies come along.** Installing or upgrading to 1.0.9 also upgrades `cryptography`, `redis`, `markdown-it-py`, and `mdit-py-plugins` where they are older than the versions above: in the shared environment when `install.sh` runs, and in an operator's own project when it adds the 1.0.9 wheel. A project that pins an older version of one of them cannot add 1.0.9 until it moves that pin.
+- **No storage format changes.** A shared host upgrades in place with `sudo ./axlib-1.0.9/install.sh`, keeping its options, and rolling back to 1.0.8 as `docs/INSTALL.md` describes works. The 1.0.8 installer ignores the new `WITH_ALL` line in `install.env`.
+
+### Validation
+
+Before tagging, on the development host and in GitHub Actions on the commit before this one:
+
+```text
+make deps: make check with every dependency at its newest
+  version on CPython 3.11.16, 3.12.15, 3.13.15, and 3.14.3:  passed on each, nothing held
+make check, locally (Ruff 0.17.2, ty 0.0.92, docstring
+  audit, tests):                                           509 passed
+make deps-check (the release gate):                        12 of 12 dependencies newest
+CI (GitHub Actions), make check on CPython 3.11 to 3.14,
+  docs, build, and the installer, fresh and upgrading:     passed
+twine check --strict of the built tarball and wheel:       passed
+Installer in an Ubuntu 26.04 container, fresh: --with-all,
+  update --dry-run up to date as root and as a netops
+  member, then --no-textfsm:                               passed
+Installer: the 1.0.8 release tarball with the TUI upgraded
+  to this build adding parsing and Markdown (options
+  kept), the documented rollback to 1.0.8, then
+  install.sh update from a stand-in for GitHub (wrong
+  digest refused, --dry-run, untrusted certificate, -k,
+  -- --cacert, --proxy through tinyproxy), keeping
+  axlib.toml, the key, and a credential record:            passed
+actionlint on the workflows:                               no errors
+zizmor 1.31.1 on the workflows:                            2 low-severity style
+  suggestions (self-repository syntax), nothing else
+```
+
+The release workflow runs every CI check and `make deps-check` again on the tag before publishing.
+
 ## 1.0.8
 
 ### Overview
