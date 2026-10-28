@@ -1,0 +1,22 @@
+! show ipv4 interface brief
+Wed Oct 28 23:38:52.087 EDT
+
+Interface                      IP-Address      Status          Protocol Vrf-Name
+Loopback0                      10.255.0.1      Up              Up       default
+MgmtEth0/RSP0/CPU0/0           192.0.2.1       Up              Up       Mgmt
+GigabitEthernet0/0/0/0         10.0.0.9        Up              Up       default
+GigabitEthernet0/0/0/1         unassigned      Shutdown        Down     default
+GigabitEthernet0/0/0/2         10.0.0.5        Up              Up       default
+
+! show lldp neighbors
+Wed Oct 28 23:38:49.913 EDT
+Capability codes:
+        (R) Router, (B) Bridge, (T) Telephone, (C) DOCSIS Cable Device
+        (W) WLAN Access Point, (P) Repeater, (S) Station, (O) Other
+
+Device ID       Local Intf               Hold-time  Capability     Port ID
+edge2           Gi0/0/0/0                120        R              Gi0/0/0/3
+rtr1.example.net
+                Gi0/0/0/2                120        R              Gi0/0/1
+
+Total entries displayed: 2

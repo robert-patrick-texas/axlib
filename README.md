@@ -170,7 +170,7 @@ records = parse_output(
 )
 ```
 
-See [docs/PARSING.md](docs/PARSING.md).
+See [docs/PARSING.md](docs/PARSING.md). For output collected with karvi, see [docs/KARVI.md](docs/KARVI.md).
 
 ## Markdown to HTML
 
@@ -256,6 +256,7 @@ The guides below are also published as a website, <https://robert-patrick-texas.
 - [docs/NETENV.md](docs/NETENV.md) — loading credentials into SSH sessions with `netenv-set` / `netenv-clear`: setup, warnings, and troubleshooting.
 - [docs/RADIUS.md](docs/RADIUS.md) — checking a login against a RADIUS server with `axlib radius`: options, exit status, Python API, how it works, and troubleshooting.
 - [docs/PARSING.md](docs/PARSING.md) — parsing show commands with `axlib parse` and comparing collections with `axlib parse diff`: capture formats, output, adding your own TextFSM templates, Python API, and troubleshooting.
+- [docs/KARVI.md](docs/KARVI.md) — collecting with karvi and parsing with axlib: platform names, output as tables, JSON lines, and snapshots, how Cisco output is normalized, and comparing interface status, routes, ARP, and MAC tables before and after a change.
 - [docs/MARKDOWN.md](docs/MARKDOWN.md) — converting Markdown to HTML pages with `axlib md2html`: what is converted, the page layout, link checking, Python API, and publishing a site.
 - [docs/CREDENTIAL_FILE.md](docs/CREDENTIAL_FILE.md) — the encrypted text store: its file format, every Python method with an example, and its command line.
 - [docs/SQLITE_CREDENTIALS.md](docs/SQLITE_CREDENTIALS.md) — the encrypted SQLite store: its database layout, every Python method with an example, and its command line.

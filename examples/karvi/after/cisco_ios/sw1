@@ -1,0 +1,64 @@
+! show interfaces status
+
+Port         Name               Status       Vlan       Duplex  Speed Type
+Gi1/0/1      desk-101           connected    20         a-full a-1000 10/100/1000BaseTX
+Gi1/0/2      desk-102           connected    20         a-full a-1000 10/100/1000BaseTX
+Gi1/0/3      desk-103           notconnect   20           auto   auto 10/100/1000BaseTX
+Gi1/0/4      desk-104           connected    20         a-full  a-100 10/100/1000BaseTX
+Gi1/0/5      ap-lobby           notconnect   30           auto   auto 10/100/1000BaseTX
+Gi1/0/6                         notconnect   1            auto   auto 10/100/1000BaseTX
+Gi1/0/7      printer-2f         connected    30         a-full  a-100 10/100/1000BaseTX
+Gi1/0/8                         notconnect   1            auto   auto 10/100/1000BaseTX
+Gi1/0/9      camera-dock        connected    30         a-full  a-100 10/100/1000BaseTX
+Gi1/0/10                        disabled     1            auto   auto 10/100/1000BaseTX
+Gi1/0/11     conf-room-b        connected    20         a-full a-1000 10/100/1000BaseTX
+Gi1/0/12     conf-room-c        connected    30         a-full a-1000 10/100/1000BaseTX
+Gi1/1/1      uplink-rtr1        connected    routed       full   1000 1000BaseSX SFP
+Gi1/1/2                         notconnect   1            full   1000 Not Present
+Te1/1/1                         notconnect   1            full    10G Not Present
+Te1/1/2                         notconnect   1            full    10G Not Present
+
+! show mac address-table
+          Mac Address Table
+-------------------------------------------
+
+Vlan    Mac Address       Type        Ports
+----    -----------       --------    -----
+ All    0100.0ccc.cccc    STATIC      CPU
+ All    0100.0ccc.cccd    STATIC      CPU
+ All    0180.c200.0000    STATIC      CPU
+  20    0050.56a1.1001    DYNAMIC     Gi1/0/1
+  20    0050.56a1.1002    DYNAMIC     Gi1/0/2
+  20    0050.56a1.1004    DYNAMIC     Gi1/0/4
+  20    0050.56a1.1011    DYNAMIC     Gi1/0/11
+  30    0017.c8d2.7707    DYNAMIC     Gi1/0/7
+  30    0050.56a1.1012    DYNAMIC     Gi1/0/12
+  30    00e0.4c3a.9909    DYNAMIC     Gi1/0/9
+Total Mac Addresses for this criterion: 10
+
+! show ip arp
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+Internet  10.1.0.1                -   f87b.2041.6c41  ARPA   GigabitEthernet1/1/1
+Internet  10.1.0.2                2   7c31.0e5a.2200  ARPA   GigabitEthernet1/1/1
+Internet  10.20.0.1               -   f87b.2041.6c40  ARPA   Vlan20
+Internet  10.20.0.101            11   0050.56a1.1001  ARPA   Vlan20
+Internet  10.20.0.102             4   0050.56a1.1002  ARPA   Vlan20
+Internet  10.20.0.104            23   0050.56a1.1004  ARPA   Vlan20
+Internet  10.20.0.111             6   0050.56a1.1011  ARPA   Vlan20
+Internet  10.20.0.112           107   0050.56a1.1012  ARPA   Vlan20
+Internet  10.30.0.1               -   f87b.2041.6c42  ARPA   Vlan30
+Internet  10.30.0.5             118   00a2.eeb0.5505  ARPA   Vlan30
+Internet  10.30.0.7              15   0017.c8d2.7707  ARPA   Vlan30
+Internet  10.30.0.9               8   00e0.4c3a.9909  ARPA   Vlan30
+Internet  10.30.0.112             3   0050.56a1.1012  ARPA   Vlan30
+
+! show cdp neighbors
+Capability Codes: R - Router, T - Trans Bridge, B - Source Route Bridge
+                  S - Switch, H - Host, I - IGMP, r - Repeater, P - Phone,
+                  D - Remote, C - CVTA, M - Two-port Mac Relay
+
+Device ID        Local Intrfce     Holdtme    Capability  Platform  Port ID
+SEP005056A11012  Gig 1/0/12        171              H P M IP Phone  Port 1
+rtr1.example.net Gig 1/1/1         138              R B   ISR4331/K Gig 0/0/0
+
+Total cdp entries displayed : 2

@@ -1,0 +1,4 @@
+show interfaces status
+show mac address-table
+show ip arp
+show cdp neighbors

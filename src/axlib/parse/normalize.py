@@ -70,16 +70,138 @@ class Profile:
     volatile: tuple[str, ...] = ()
 
 
-# ntc-templates uses the same field names on every platform for these
-# commands, so one profile covers Cisco IOS/NX-OS/XR, Arista, and Junos.
+# One profile serves a command on every platform: a profile lists each
+# spelling ntc-templates uses for a field (IOS's "nexthop_ip" is IOS XR's
+# "next_hop"), and only the fields a template actually produces are used.
+#
+# The question operators ask of CDP and LLDP before and after a change is
+# "is every neighbor still there?", so a neighbor is identified by the local
+# port and the neighbor's name.  The hold time counts down and the age counts
+# up between any two views, so both are dropped; the order neighbors were
+# heard in is undone by sorting.  IOS XR's LLDP detail calls the name
+# "neighbor".
 _NEIGHBORS = Profile(
-    key=("local_interface", "neighbor_name"),
-    interfaces=("local_interface", "neighbor_interface"),
+    key=("local_interface", "neighbor_name", "neighbor"),
+    interfaces=("local_interface", "neighbor_interface", "neighbor_port_id"),
     volatile=("holdtime", "hold_time", "age"),
 )
 _INTERFACES = Profile(key=("vrf", "interface"), interfaces=("interface",))
 _PORTS = Profile(key=("port",), interfaces=("port",))
+# A route is one path to a prefix.  The next hop is part of the key because
+# equal-cost paths list one prefix several times, and a key shared by several
+# records would leave the whole table compared as whole records.  A path that
+# moves to another next hop is therefore reported as removed and added.
+_ROUTES = Profile(
+    key=(
+        "vrf",
+        "network",
+        "prefix_length",
+        "nexthop_ip",
+        "next_hop",
+        "nexthop_if",
+        "interface",
+    ),
+    interfaces=("nexthop_if", "interface"),
+    volatile=("uptime",),
+)
+# An ARP entry is an address on an interface; a new MAC address for the same
+# address is the change worth seeing.  IOS XR lists the table once per line
+# card ("cpu"), and IOS's "show arp" names the address field "address".
+_ARP = Profile(
+    key=("vrf", "ip_address", "address", "interface", "cpu"),
+    interfaces=("interface", "physical_interface"),
+    volatile=("age", "age_min"),
+)
+# A MAC address is learned once per VLAN; the port it is on is what changes.
+# Arista counts moves and stamps the last one, both of which tick by.
+_MAC_TABLE = Profile(
+    key=("vlan_id", "mac_address", "destination_address"),
+    interfaces=("destination_port", "ports"),
+    volatile=("age", "moves", "last_move"),
+)
+# Routing-protocol neighbors: one router can be a neighbor over several
+# links, so the interface is part of the key.  Timers, uptimes, sequence
+# numbers, queue depths, and message counters change on every view; the
+# state (FULL, Established or a prefix count, UP) is what matters.
+_OSPF = Profile(
+    key=("vrf", "neighbor_id", "interface"),
+    interfaces=("interface",),
+    volatile=(
+        "dead_time",
+        "uptime",
+        "up_time",
+        "neighbor_uptime",
+        "state_changes",
+        "last_oob_resync",
+        "rq_index",
+        "rq_length",
+        "retransmission_number",
+        "first_packet",
+        "next_packet",
+        "last_retransmission_scan_length",
+        "max_retransmission_scan_length",
+        "last_retransmission_scan_time",
+        "max_retransmission_scan_time",
+    ),
+)
+_EIGRP = Profile(
+    key=("vrf", "as", "ip_address", "interface"),
+    interfaces=("interface",),
+    volatile=(
+        "h",
+        "hold",
+        "uptime",
+        "srtt",
+        "rto",
+        "q_cnt",
+        "seq_num",
+        "retrans",
+        "retries",
+    ),
+)
+_BGP_COUNTERS = (
+    "messages_received",
+    "messages_sent",
+    "msg_rcvd",
+    "msg_sent",
+    "table_version",
+    "tblver",
+    "input_queue",
+    "output_queue",
+    "in_queue",
+    "out_queue",
+    "up_down",
+    "in_pkt",
+    "out_pkt",
+    "out_q",
+    "flaps",
+    "last_flap",
+)
+_BGP = Profile(
+    key=(
+        "vrf",
+        "instance_name",
+        "address_family",
+        "bgp_neighbor",
+        "bgp_neigh",
+        "peer_ip",
+    ),
+    volatile=_BGP_COUNTERS,
+)
+# IOS XR's "show bgp vrf all ipv4 unicast summary" makes one record per VRF
+# with its neighbors in lists, so the VRF alone identifies a record.
+_BGP_PER_VRF = Profile(key=("vrf",), volatile=_BGP_COUNTERS)
+# IOS lists a level-1 and a level-2 adjacency to one router on one link as
+# two rows, so the level ("type") is part of the key.
+_ISIS = Profile(
+    key=("vrf", "instance", "system_id", "interface", "type"),
+    interfaces=("interface",),
+    volatile=("hold_time", "holdtime"),
+)
 
+# Keyed by the command each template parses, as axlib spells it from the
+# template's file name: IOS XR's "show route" is parsed by its
+# "show ip route" template, so it is listed under that name.
 PROFILES: Mapping[str, Profile] = MappingProxyType(
     {
         "show cdp neighbors": _NEIGHBORS,
@@ -90,6 +212,30 @@ PROFILES: Mapping[str, Profile] = MappingProxyType(
         "show ipv6 interface brief": _INTERFACES,
         "show interfaces status": _PORTS,
         "show interface status": _PORTS,
+        "show ip route": _ROUTES,
+        "show ipv6 route": _ROUTES,
+        "show ip arp": _ARP,
+        "show ip arp detail": _ARP,
+        "show ip arp detail vrf all": _ARP,
+        "show arp": _ARP,
+        "show arp no-resolve": _ARP,
+        "show mac-address-table": _MAC_TABLE,
+        "show mac address-table": _MAC_TABLE,
+        "show ip ospf neighbor": _OSPF,
+        "show ip ospf neighbor detail": _OSPF,
+        "show ospf neighbor": _OSPF,
+        "show ospf vrf all neighbor": _OSPF,
+        "show ip eigrp neighbors": _EIGRP,
+        "show ip eigrp neighbors detail": _EIGRP,
+        "show eigrp neighbors": _EIGRP,
+        "show ip bgp summary": _BGP,
+        "show ip bgp summary vrf": _BGP,
+        "show ipv6 bgp summary": _BGP,
+        "show bgp summary": _BGP,
+        "show bgp instance all summary": _BGP,
+        "show bgp vrf all ipv4 unicast summary": _BGP_PER_VRF,
+        "show isis neighbors": _ISIS,
+        "show isis adjacency": _ISIS,
     }
 )
 
@@ -118,6 +264,12 @@ _INTERFACE = re.compile(
     r"^(?P<kind>[A-Za-z][A-Za-z\-]*?)(?P<space>\s*)(?P<number>\d\S*)$"
 )
 _DIGITS = re.compile(r"(\d+)")
+# MAC addresses in Cisco (0050.56a1.1001) or colon (00:50:56:a1:10:01) form.
+# Their digits are hexadecimal and fixed-width, so text order is their order.
+_MAC_ADDRESS = re.compile(
+    r"[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}|[0-9a-f]{2}(?:[:-][0-9a-f]{2}){5}",
+    re.IGNORECASE,
+)
 
 
 def canonical_interface(name: str) -> str:
@@ -160,7 +312,9 @@ def natural_key(value: object) -> tuple[Any, ...]:
 
     Splitting ``"Gi1/0/10"`` into ``("gi", 1, "/", 0, "/", 10, "")`` makes it
     sort after ``"Gi1/0/2"``, as a person reads it.  Text and numbers always
-    alternate, so keys of different values compare without type errors.
+    alternate, so keys of different values compare without type errors.  A
+    MAC address is the exception: read as numbers, ``00e0.4c3a.9909`` would
+    sort before ``0017.c8d2.7707``, so it is compared as lower-case text.
 
     Args:
         value (object): A field value; lists and other non-strings are
@@ -173,10 +327,35 @@ def natural_key(value: object) -> tuple[Any, ...]:
         TypeError: If ``value`` cannot be converted to JSON.
     """
     text = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+    if _MAC_ADDRESS.fullmatch(text):
+        return (text.lower(),)
     return tuple(
         int(part) if index % 2 else part.lower()
         for index, part in enumerate(_DIGITS.split(text))
     )
+
+
+def _canonical_interfaces(value: Any) -> Any:
+    """Spell an interface name, or each name in a list, one way.
+
+    Some templates collect several interfaces into one field, such as the
+    ports a MAC address was learned on (TextFSM's ``List`` values).
+
+    Args:
+        value (Any): A field value: one name, or a list of names.
+
+    Returns:
+        Any: The value with every name passed through
+            :func:`canonical_interface`; other types are returned unchanged.
+
+    Raises:
+        None: Only string operations are performed.
+    """
+    if isinstance(value, str):
+        return canonical_interface(value)
+    if isinstance(value, list):
+        return [_canonical_interfaces(item) for item in value]
+    return value
 
 
 def _clean_value(value: Any) -> Any:
@@ -283,8 +462,7 @@ def normalize_records(
             if name not in dropped
         }
         for name in interfaces & item.keys():
-            if isinstance(item[name], str):
-                item[name] = canonical_interface(item[name])
+            item[name] = _canonical_interfaces(item[name])
         cleaned.append(item)
 
     fields = set().union(*(record.keys() for record in cleaned))

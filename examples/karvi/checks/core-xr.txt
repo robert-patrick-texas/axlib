@@ -1,0 +1,2 @@
+show ipv4 interface brief
+show lldp neighbors

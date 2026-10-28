@@ -62,6 +62,44 @@ def test_natural_key_orders_numbers_by_value() -> None:
     assert natural_key(["a", "b"]) == natural_key('["a", "b"]')
 
 
+def test_natural_key_orders_mac_addresses_as_text() -> None:
+    macs = ["00e0.4c3a.9909", "0050.56a1.1012", "0017.c8d2.7707"]
+
+    assert sorted(macs, key=natural_key) == [
+        "0017.c8d2.7707",
+        "0050.56a1.1012",
+        "00e0.4c3a.9909",
+    ]
+    # Beside other values the keys still compare without a type error.
+    assert min(["Gi1/0/2", "0050.56a1.1012", "CPU"], key=natural_key) == (
+        "0050.56a1.1012"
+    )
+
+
+def test_interface_names_in_lists_are_spelled_out_too() -> None:
+    records, key = normalize_records(
+        [
+            {
+                "destination_address": "0050.56a1.1012",
+                "vlan_id": "30",
+                "destination_port": ["Gi1/0/12"],
+            },
+            {
+                "destination_address": "0100.0ccc.cccc",
+                "vlan_id": "All",
+                "destination_port": ["CPU"],
+            },
+        ],
+        command="show mac-address-table",
+    )
+
+    assert key == ("vlan_id", "destination_address")
+    assert [record["destination_port"] for record in records] == [
+        ["GigabitEthernet1/0/12"],
+        ["CPU"],
+    ]
+
+
 def test_normalize_drops_volatile_fields_and_sorts_by_profile_key() -> None:
     records = [
         {"neighbor_name": "b ", "local_interface": "Gig 1/0/10", "holdtime": "150"},

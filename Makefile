@@ -35,7 +35,7 @@ deps-check:
 # The documentation site, in sidebar order.  .github/workflows/docs.yml runs
 # `make docs` from each release's tag and deploys site/ to GitHub Pages.
 DOCS = README.md docs/INSTALL.md docs/CREDENTIALS.md docs/CREDENTIAL_TUI.md \
-	docs/NETENV.md docs/RADIUS.md docs/PARSING.md docs/MARKDOWN.md \
+	docs/NETENV.md docs/RADIUS.md docs/PARSING.md docs/KARVI.md docs/MARKDOWN.md \
 	docs/TEXT_FILTERS.md docs/CREDENTIAL_FILE.md docs/SQLITE_CREDENTIALS.md \
 	docs/DEVELOPMENT.md examples/parse/README.md examples/text/README.md \
 	RELEASE_NOTES.md CHANGELOG.md

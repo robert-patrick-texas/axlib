@@ -5,8 +5,9 @@
 compares two collections of them record by record.
 
 The usual reason is a maintenance window. You collect `show cdp neighbors`,
-`show lldp neighbors detail`, `show ip interface brief`, and so on before the
-work and again after it, then compare. Comparing the text doesn't work well:
+`show lldp neighbors detail`, `show ip ospf neighbor`, `show ip route`, and
+so on before the work and again after it, then compare, above all to see
+that every neighbor came back. Comparing the text doesn't work well:
 devices list CDP and LLDP neighbors in the order they heard them, not in
 interface order, and hold times count down between runs. A plain `diff` of an
 unchanged switch is full of lines that moved or ticked. `axlib parse` sorts
@@ -124,6 +125,11 @@ expression. It has a `command` group and, optionally, a `host` group:
 ```bash
 axlib parse -p cisco_ios --marker '=+ (?P<host>\S+): (?P<command>.+?) =+$' collected.txt
 ```
+
+karvi's collection files put each command after a `! COMMAND` line and name
+the file after the device. [Collecting with karvi, parsing with
+axlib](KARVI.md) gives the marker for them and follows a change from
+collection to comparison.
 
 To see how axlib will cut up a capture before parsing it, run `axlib parse
 split`:
@@ -420,23 +426,60 @@ Unless you use `--raw`, each command's records go through three steps:
    alone.
 3. **Records are sorted by their key** in natural order (`Gi1/0/2` before
    `Gi1/0/10`), then by all their fields, so the result never depends on the
-   device's order.
+   device's order. MAC addresses sort as text (`0017.c8d2.7707` before
+   `00e0.4c3a.9909`), since their digits are hexadecimal.
 
 The key comes from the template's `Key` fields. If the template has none, it
-comes from a built-in profile:
+comes from a built-in profile. A profile names every spelling ntc-templates
+uses for a field on Cisco IOS, NX-OS, and IOS XR, Arista EOS, and Junos, and
+only the fields a template actually produces are used. IOS has no `vrf`
+column, for example, so its `show ip interface brief` key is just
+`interface`.
 
-| Command | Key | Interface fields | Dropped |
+| Table | Commands | Key | Dropped |
 |---|---|---|---|
-| `show cdp neighbors`, `show cdp neighbors detail`, `show lldp neighbors`, `show lldp neighbors detail` | `local_interface`, `neighbor_name` | `local_interface`, `neighbor_interface` | `holdtime`, `hold_time`, `age` |
-| `show ip interface brief`, `show ipv6 interface brief` | `vrf`, `interface` | `interface` | |
-| `show interfaces status`, `show interface status` | `port` | `port` | |
+| CDP and LLDP neighbors | `show cdp neighbors [detail]`, `show lldp neighbors [detail]` | `local_interface`, `neighbor_name` (`neighbor` in IOS XR's LLDP detail) | `holdtime`, `hold_time`, `age` |
+| OSPF neighbors | `show ip ospf neighbor [detail]`, `show ospf neighbor` (IOS XR, Junos), `show ospf vrf all neighbor` (IOS XR) | `vrf`, `neighbor_id`, `interface` | dead time, uptimes, and the detail output's counters and retransmission timers |
+| EIGRP neighbors | `show ip eigrp neighbors [detail]`, `show eigrp neighbors` (IOS XR) | `vrf`, `as`, `ip_address`, `interface` | `h`, `hold`, `uptime`, `srtt`, `rto`, `q_cnt`, `seq_num`, `retrans`, `retries` |
+| BGP peers | `show ip bgp summary` (with `all`, or NX-OS's `vrf`), `show ipv6 bgp summary` (Arista), `show bgp summary` (Junos), `show bgp instance all summary` (IOS XR) | `vrf`, `instance_name`, `address_family`, the neighbor's address | message and packet counts, table version, queues, up/down time, flaps |
+| BGP peers per VRF | `show bgp vrf all ipv4 unicast summary` (IOS XR, one record per VRF) | `vrf` | as above |
+| IS-IS neighbors | `show isis neighbors`, `show isis adjacency` (Junos) | `vrf`, `instance`, `system_id`, `interface`, `type` (the level) | `hold_time` |
+| Routes | `show ip route` (also IOS XR's `show route`), `show ipv6 route` | `vrf`, `network`, `prefix_length`, the next hop, the outgoing interface | `uptime` |
+| ARP | `show ip arp [detail] [vrf all]`, `show arp`, `show arp no-resolve` (Junos) | `vrf`, the IP address, `interface`, `cpu` (IOS XR's line card) | `age`, `age_min` |
+| MAC addresses | `show mac address-table` (`show mac-address-table` on IOS) | `vlan_id`, the MAC address | `age`, and Arista's `moves` and `last_move` |
+| Interfaces | `show ip interface brief`, `show ipv6 interface brief` | `vrf`, `interface` | |
+| Ports | `show interfaces status`, `show interface status` | `port` | |
 
-ntc-templates uses the same field names for these commands on most
-platforms, so one profile serves Cisco, Arista, and Juniper alike. Only the
-key fields a template actually produces are used. IOS has no
-`vrf` column, for example, so its `show ip interface brief` key is just
-`interface`. A command with neither `Key` fields nor a profile is compared as
-whole records.
+Interface names are spelled out in each profile's interface fields: local
+and neighbor ports, a route's outgoing interface, an ARP entry's interface,
+and the ports a MAC address was learned on.
+
+The keys follow what an operator checks:
+
+- **A neighbor is the device on a local port.** Before and after a change
+  the question is whether every neighbor is back. One that didn't come back
+  is listed with `-`, a new one with `+`, and one whose platform,
+  capabilities, or software version changed with `~`. Their order and hold
+  times never show up.
+- **A routing-protocol neighbor** is identified by the interface too, since
+  one router can be a neighbor over several links. Its state is kept: `FULL`,
+  `UP`, or a BGP prefix count is what you check. A BGP peer that sends a full
+  Internet table changes its prefix count all the time. `--ignore
+  state_or_prefixes_received` (IOS) or `--ignore state_pfxrcd` (NX-OS, IOS
+  XR, Arista) leaves the count out, but that field also holds the state of a
+  peer that is down (`Idle`, `Active`), so a peer that went down would no
+  longer be reported.
+- **A route is one path to a prefix.** Equal-cost paths list a prefix once
+  per next hop, so the next hop is part of the key, and a path that moved to
+  another next hop is listed as one removed and one added.
+- **An ARP entry** whose address now answers from another MAC address is
+  listed with `~`, the change that matters most in an ARP table.
+- **A MAC address** is learned once per VLAN; one that moved to another port
+  is listed with `~`.
+
+A command with neither `Key` fields nor a profile is compared as whole
+records. So are a command's records when several share one key, which can
+happen with a template from a vendor that names a field differently.
 
 Prefer the `detail` commands for comparisons where you can. The brief LLDP
 table cuts device names to 20 characters (`core-rtr-01.example.`), while the
@@ -590,9 +633,10 @@ run, leave it out of your template instead.
 - Parsing is only as good as the templates. ntc-templates covers common
   commands well, but rarer commands and new software releases may need a
   template of your own.
-- The built-in comparison keys cover the CDP, LLDP, IP-interface, and
-  interface-status commands above. Other commands use their templates' `Key`
-  fields or are compared as whole records.
+- The built-in comparison keys cover the neighbor, route, ARP, MAC-address,
+  IP-interface, and interface-status commands in the profile table above.
+  Other commands use their templates' `Key` fields or are compared as whole
+  records.
 - A file-name template parses a command without arguments. Commands with
   arguments need an index row.
 - Interface-name normalization knows Cisco-style names (`GigabitEthernet`,
