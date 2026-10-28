@@ -1,6 +1,6 @@
 [project]
 name = "axlib"
-version = "1.0.9"
+version = "1.0.10"
 description = "Educational Python tools and library helpers for Network Operations automation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -96,14 +96,14 @@ dev = [
     # Developers always get every optional extra, so `ty` can check and pytest
     # can exercise axlib.credentials.tui and axlib.parse after a plain `uv sync`.
     "axlib[markdown,textfsm,tui]",
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     # Pinned exactly: `select = ["ALL"]` in [tool.ruff.lint] means every ruff
     # release can add newly stabilized rules, so ruff changes only through
     # `make deps`, which moves the pin to the newest release when make check
     # passes with it and holds it otherwise (docs/DEVELOPMENT.md, "Dependencies").
-    "ruff==0.17.2",
-    "ty>=0.0.92",
+    "ruff==0.17.3",
+    "ty>=0.0.93",
 ]
 
 [tool.setuptools.packages.find]

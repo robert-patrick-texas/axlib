@@ -2,6 +2,103 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.10
+
+### Overview
+
+`axlib parse diff` now answers the question a network operations team asks after a maintenance window: did every neighbor come back? Built-in profiles now cover OSPF, EIGRP, BGP, and IS-IS neighbors, routes, ARP, and MAC address tables on Cisco IOS, NX-OS, and IOS XR, Arista EOS, and Junos, beside the CDP and LLDP neighbors, interfaces, and ports they already covered. Neighbors listed in another order and timers that moved are no longer reported, with no `--ignore` options. A new guide, `docs/KARVI.md`, shows how to collect show-command output with karvi and turn it into tables, JSON lines, snapshots, and before-and-after reports. No storage format changes, and installing or upgrading axlib upgrades no other package.
+
+### Are all neighbors back?
+
+Collect the neighbor commands before and after the work and compare. In this report from the guide's example, the switch lost its lobby access point, and the router's link to the core moved to a new port as planned:
+
+```text
+rtr1: show cdp neighbors
+  - local_interface=GigabitEthernet0/0/1 neighbor_name=core1
+  + local_interface=GigabitEthernet0/0/2 neighbor_name=core1
+rtr1: show ip ospf neighbor
+  - neighbor_id=10.255.0.1 interface=GigabitEthernet0/0/1
+  + neighbor_id=10.255.0.1 interface=GigabitEthernet0/0/2
+sw1: show cdp neighbors
+  - local_interface=GigabitEthernet1/0/5 neighbor_name=ap-lobby.example.net
+```
+
+Every device listed its neighbors in another order the second time, and every hold time and dead time had moved; none of that shows. A neighbor that didn't come back is listed with `-`. One that came back on another port is a `-` and a `+` with the same name. One that is still listed but in another state is a `~` line, such as an OSPF neighbor that is no longer `FULL` or a BGP peer whose prefix count turned into `Active`.
+
+| Table | A record is | Dropped |
+|---|---|---|
+| CDP and LLDP neighbors | the neighbor's name on a local port | hold time, age |
+| OSPF neighbors | the router ID on an interface | dead time, uptime, and the detail output's counters |
+| EIGRP neighbors | the address on an interface, per AS | hold, uptime, SRTT, RTO, queue count, sequence number |
+| BGP peers | the peer's address, per VRF and address family | messages, table version, queues, up/down time, flaps |
+| IS-IS neighbors | the system ID on an interface, per level | hold time |
+| Routes | one path: prefix and next hop, per VRF | uptime |
+| ARP | the IP address on an interface | age |
+| MAC addresses | the MAC address, per VLAN | age, and Arista's move count |
+
+- **Every platform's spelling.** A profile names each field name ntc-templates uses for the same thing (IOS's `nexthop_ip` is IOS XR's `next_hop`), so one profile serves a command on every platform, including IOS XR's `show route`, `show arp`, `show ospf neighbor`, `show eigrp neighbors`, and BGP summaries, and Junos's `show bgp summary` and `show isis adjacency`. The CDP and LLDP profile now also identifies IOS XR's LLDP detail, which calls the neighbor's name `neighbor`.
+- **Interface names in lists** are spelled out like the others, so a MAC address's ports read `GigabitEthernet1/0/5` and join with the interface tables. **MAC addresses sort as text** (`0017.c8d2.7707` before `00e0.4c3a.9909`).
+- **Before**, these commands were compared as whole records: every timer that moved turned a row into a removed and an added row, and finding the neighbor that didn't come back meant reading past them.
+- **IOS XR's `show bgp summary`** has no template of its own in ntc-templates, so it is parsed with the template for `show bgp`, which reads the BGP table. Use `show bgp instance all summary`. A BGP peer that sends a full Internet table changes its prefix count all the time; `docs/PARSING.md` explains how to leave it out and what that costs.
+
+`docs/PARSING.md` ("How records are made comparable") lists every command and field.
+
+### Collecting with karvi, parsing with axlib
+
+`docs/KARVI.md` follows one change through karvi and axlib on Cisco IOS XE and IOS XR, with sample collections in `examples/karvi` so every command can be run without devices:
+
+- **The same platform names.** karvi now uses `cisco_ios` and `cisco_xr`, the names netmiko and ntc-templates use, and still accepts `cisco_iosxe`, `cisco_xe`, and `cisco_iosxr`. Give axlib the main names.
+- **karvi's collection files** (`karvi run --cd=DIR`, one file per device, each command after a `! COMMAND` line) are read with one `--marker` pattern, and the device is named after the file.
+- **Every output format**: tables to read, JSON lines with `jq` recipes (ports not connected, ARP as CSV, MAC addresses per VLAN, interfaces from IOS XE and IOS XR together), snapshots to keep, and Python reports, such as the switch port each IP address is on.
+- **How Cisco output is normalized**: one name per command, the same field names on every platform, one spelling for interface names, a stable order, and no timers.
+- **The neighbor check**, with a recipe that lists only the neighbors that are gone from any port, then the rest of the before-and-after report: interface status, routes, ARP, and MAC tables.
+- **A maintenance-window script** that collects before and after, lists any neighbor that didn't come back (`neighbors`, exit status 1 or 0), and compares everything.
+
+### Dependencies
+
+Every dependency is at its newest version, tested with `make check` on Python 3.11, 3.12, 3.13, and 3.14. Nothing is held.
+
+- **Development tools:** `pytest` 9.2.0 (was 9.1.1), `ruff` 0.17.3 (was 0.17.2), and `ty` 0.0.93 (was 0.0.92). `platformdirs` was also upgraded in `uv.lock`.
+- **Runtime dependencies and extras** already required their newest versions, so nothing else changes for an installation.
+
+### For anyone working on axlib
+
+- **`tests/test_parse_profiles.py`** checks each profile's key and dropped fields against the installed ntc templates, so a template that renames a field fails `make check` (and `make deps`) instead of quietly changing a comparison. It also parses NX-OS CDP, Arista and IOS XR LLDP, OSPF, EIGRP, BGP, and IS-IS samples twice, reordered with moved timers, and expects no change, then with one neighbor gone, and expects exactly that neighbor reported. `docs/DEVELOPMENT.md` ("Adding a comparison profile") describes the steps.
+- **The release workflow** calls its own CI and documentation workflows with GitHub's self-repository syntax, `uses: $/...`. This release is the first to call the documentation workflow that way.
+- **The source tarball** includes `examples/karvi`, whose collection files have no extension, so `tests/test_parse_karvi.py` runs from an unpacked tarball too.
+
+### Compatibility
+
+- **Comparisons of the newly covered commands change.** Records that differ only in timers are no longer reported, a record that changed is listed by its key (`- neighbor_id=10.255.0.1 interface=GigabitEthernet0/0/1`), and `--json` has the whole records as before. `--ignore age --ignore uptime` and the like still work and now change nothing for these commands.
+- **Snapshots from 1.0.9** hold these commands without a key and with their timers, so comparing one with a 1.0.10 snapshot lists every row of those commands as removed and added, even when both were made from the same capture. Parse the captures again with 1.0.10, or compare the captures themselves.
+- **MAC table ports are spelled out** (`GigabitEthernet1/0/5`, not `Gi1/0/5`) in tables, JSON lines, and snapshots; adjust any filter that matches the short name. `--raw` gives the records as the template returns them.
+- **No storage format changes, and no installer changes.** A shared host upgrades in place with `sudo ./axlib-1.0.10/install.sh` or `sudo /opt/shared/axlib/current/install.sh update`, keeping its options, and rolling back to 1.0.9 as `docs/INSTALL.md` describes works.
+
+### Validation
+
+Before tagging, on the development host and in GitHub Actions on the commit before this one:
+
+```text
+make deps: make check with every dependency at its newest
+  version on CPython 3.11.16, 3.12.15, 3.13.15, and 3.14.3:  570 passed on each, nothing held
+make check, locally (Ruff 0.17.3, ty 0.0.93, docstring
+  audit, tests):                                           570 passed
+make deps-check (the release gate):                        12 of 12 dependencies newest
+make docs (strict, no broken links):                       passed
+CI (GitHub Actions) on the commit before this one: make
+  check on CPython 3.11 to 3.14, docs, build, and the
+  installer, fresh and upgrading from 1.0.9:               passed
+twine check --strict of the built tarball and wheel:       passed
+Source tarball contents: docs/KARVI.md, examples/karvi,
+  and the new tests:                                       present
+The guide's commands and outputs, rerun on examples/karvi,
+  and its maintenance-window script, run end to end with
+  a stand-in for karvi (a missing neighbor, every
+  neighbor back, an unreachable device):                   as documented
+```
+
+The release workflow runs every CI check and `make deps-check` again on the tag before publishing.
+
 ## 1.0.9
 
 ### Overview
