@@ -109,10 +109,15 @@ template marks no `Key` fields, so prefer `Key` in a template you control.
 
 1. Check the field names the ntc templates produce on each platform
    (`axlib parse templates -p PLATFORM COMMAND` shows the template file).
-2. Add the command to `PROFILES`, reusing a `Profile` when the fields match.
-3. Add a capture to `examples/parse` or a test in `tests/test_parse_*.py` with
-   reordered rows and a changed volatile field, and check that
-   `axlib parse diff` reports only the real change.
+   axlib names the command after the template's file name, so list every
+   spelling the platforms use.
+2. Add the command to `PROFILES`, reusing a `Profile` when the fields match,
+   or add each platform's spelling of a field to the existing one.
+3. Add each template to the table in `tests/test_parse_profiles.py`, which
+   checks the key and dropped fields against the installed templates. For a
+   neighbor table, add a sample there too: the tests parse it twice, with the
+   rows reordered and the timers moved, and expect no change, then with one
+   neighbor gone, and expect it reported.
 4. Update the profile table in `docs/PARSING.md`.
 
 ## Documentation site

@@ -10,6 +10,8 @@ include examples/axlib.toml.example
 recursive-include examples/text *.md *.test *.toml *.white *.yaml
 include examples/netenv/netenv.sh
 recursive-include examples/parse *.md *.log *.txt *.textfsm
+# karvi names each collection file after its device, with no extension.
+recursive-include examples/karvi *
 include scripts/netenv-set scripts/netenv-clear scripts/axuv
 recursive-include tests *.py
 recursive-include tools *.py *.sh *.toml
