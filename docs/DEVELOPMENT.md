@@ -154,7 +154,7 @@ request:
 
 | Job | What it checks |
 | --- | --- |
-| `make check (Python ...)` | `make check` on Python 3.11, 3.12, 3.13, and 3.14. `UV_LOCKED=1` makes an out-of-date `uv.lock` an error instead of an update. |
+| `make check (Python ...)` | `make check` on Python 3.11, 3.12, 3.13, 3.14, and 3.15. `UV_LOCKED=1` makes an out-of-date `uv.lock` an error instead of an update. |
 | `docs` | `make docs`, which fails on a broken link. |
 | `build` | `uv build` and `twine check --strict`, the metadata check PyPI applies. The tarball and wheel are kept for the jobs after it. |
 | `install.sh (fresh)` | `tools/installer-test.sh` on that tarball: a new host with every optional part. |

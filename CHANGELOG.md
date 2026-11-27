@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- axlib supports Python 3.15. It is in the classifiers, CI runs `make check` on Python 3.11 to 3.15, and `install.sh` installs Python 3.15 on a new host. A host that `install.sh` already set up keeps the Python version recorded in `/etc/axlib/install.env`.
+- `make deps` moved the runtime dependency to `redis>=8.2.0`, the optional extras to `markdown-it-py[linkify]>=4.3.0`, `mdit-py-plugins>=0.7.0`, `ntc-templates>=9.4.0`, and `textfsm>=2.1.1`, and the development tools to `ruff==0.17.6` and `ty>=0.0.112`. A shared host that upgrades axlib therefore also upgrades any of these that it has at an older version.
+- ty 0.0.112 renamed two rules, so the `ty: ignore` comments in `axlib.tf` name `missing-attribute` and `not-callable`.
+- The workflows use astral-sh/setup-uv 10.4.0.
+- `test_release_number_is_not_hard_coded_elsewhere` skips the local files that `.gitignore` keeps out of git (`STATUS.md`, `CLAUDE.local.md`, and `local-notes/`), so `make check` passes in a checkout that has them.
+
 ## 1.0.10 - 2026-10-28
 
 - `axlib parse` has built-in profiles for the tables a maintenance window checks, so `axlib parse diff` reports which neighbors didn't come back and what really changed, without `--ignore`. OSPF, EIGRP, BGP, and IS-IS neighbors are identified by the neighbor and the interface (BGP peers by address, VRF, and address family), and their dead times, hold times, uptimes, sequence numbers, queues, and message counters are dropped; the state stays. A route is one path, identified by prefix and next hop, with its uptime dropped. An ARP entry is an address on an interface, with its age dropped, so a new MAC address for it is a change of that entry. A MAC address is identified per VLAN, with NX-OS's age and Arista's move count dropped. The profiles name every field spelling ntc-templates uses on Cisco IOS, NX-OS, and IOS XR, Arista EOS, and Junos, including IOS XR's `show route`, `show arp`, `show ospf neighbor`, `show eigrp neighbors`, and BGP summaries, and Junos's `show bgp summary` and `show isis adjacency`. The CDP and LLDP profile also identifies IOS XR's LLDP detail by its `neighbor` field. Before, these commands were compared as whole records, so every timer that moved was reported as a removed and an added row.

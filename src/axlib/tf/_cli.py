@@ -111,7 +111,7 @@ def read_text(source: str, *, encoding: str) -> str:
         stream = _stdin_buffer()
         # `stream` is BinaryIO in normal execution or a duck-typed test double
         # (e.g. io.StringIO) with `.read()`; `object` can't express that.
-        data = stream.read()  # ty: ignore[unresolved-attribute]
+        data = stream.read()  # ty: ignore[missing-attribute]
     else:
         # Binary mode prevents Python from silently converting device-config
         # line endings before a filter can honor --preserve-line-endings.
@@ -148,11 +148,11 @@ def write_text(destination: str, text: str, *, encoding: str) -> None:
                     # `stream` is BinaryIO in normal execution or a duck-typed
                     # test double with `.write()`; `object` can't express
                     # that, and the except below handles the text-stream case.
-                    stream.write(text.encode(encoding))  # ty: ignore[call-non-callable]
+                    stream.write(text.encode(encoding))  # ty: ignore[not-callable]
                 except TypeError:
                     # StringIO and similar teaching/test streams accept text,
                     # while normal stdout buffers accept bytes.
-                    stream.write(text)  # ty: ignore[call-non-callable]
+                    stream.write(text)  # ty: ignore[not-callable]
         return
 
     output_path = Path(destination)

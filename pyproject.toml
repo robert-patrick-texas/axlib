@@ -34,12 +34,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Networking",
 ]
 dependencies = [
     "cryptography>=50.0.2",
-    "redis>=8.1.0",
+    "redis>=8.2.0",
 ]
 
 [project.scripts]
@@ -73,14 +74,14 @@ Issues = "https://github.com/robert-patrick-texas/axlib/issues"
 # strikethrough) with linkify-it-py, which turns bare URLs into links, and
 # mdit-py-plugins for GitHub's task-list check boxes and footnotes.
 markdown = [
-    "markdown-it-py[linkify]>=4.2.0",
-    "mdit-py-plugins>=0.6.1",
+    "markdown-it-py[linkify]>=4.3.0",
+    "mdit-py-plugins>=0.7.0",
 ]
 # `axlib parse`: the TextFSM engine plus the ntc-templates collection of
 # ~1,000 community templates for show commands on many vendors' devices.
 textfsm = [
-    "ntc-templates>=9.3.0",
-    "textfsm>=2.1.0",
+    "ntc-templates>=9.4.0",
+    "textfsm>=2.1.1",
 ]
 tui = [
     "rich>=15.0.0",
@@ -102,8 +103,8 @@ dev = [
     # release can add newly stabilized rules, so ruff changes only through
     # `make deps`, which moves the pin to the newest release when make check
     # passes with it and holds it otherwise (docs/DEVELOPMENT.md, "Dependencies").
-    "ruff==0.17.3",
-    "ty>=0.0.93",
+    "ruff==0.17.6",
+    "ty>=0.0.112",
 ]
 
 [tool.setuptools.packages.find]

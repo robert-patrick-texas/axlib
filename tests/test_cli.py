@@ -97,7 +97,8 @@ def test_package_version_matches_project_metadata() -> None:
 # Files that legitimately contain release numbers: the single source of truth,
 # the lock file uv generates from it, the two release-history documents,
 # PKG-INFO, the metadata file generated at the top of a source distribution,
-# and the dependency holds, whose dependency versions may look like ours.
+# the dependency holds, whose dependency versions may look like ours, and a
+# developer's local notes beside the tree, which .gitignore keeps out of git.
 VERSIONED_FILES = {
     "pyproject.toml",
     "uv.lock",
@@ -105,10 +106,22 @@ VERSIONED_FILES = {
     "RELEASE_NOTES.md",
     "PKG-INFO",
     "tools/dependency-holds.toml",
+    "STATUS.md",
+    "CLAUDE.local.md",
 }
 # Generated output: site/ is the documentation `make docs` builds, whose pages
-# name the release they were built from.
-SKIPPED_DIRECTORIES = {".git", ".venv", "venv", "build", "dist", "site", "__pycache__"}
+# name the release they were built from.  local-notes/ is a developer's local
+# notes, like STATUS.md above.
+SKIPPED_DIRECTORIES = {
+    ".git",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "site",
+    "__pycache__",
+    "local-notes",
+}
 
 
 def test_release_number_is_not_hard_coded_elsewhere() -> None:

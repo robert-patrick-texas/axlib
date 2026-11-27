@@ -43,7 +43,7 @@ INSTALL_RECORD=/etc/axlib/install.env
 # Defaults for the first install.
 PREFIX=/opt/shared/axlib
 PYTHON_DIR=/opt/shared/python
-PYTHON_VERSION=3.14
+PYTHON_VERSION=3.15
 GROUP=netops
 BIN_DIR=/usr/local/bin
 SBIN_DIR=/usr/local/sbin

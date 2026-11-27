@@ -89,7 +89,7 @@ sudo ./install.sh [options]
 | --- | --- | --- |
 | `--prefix DIR` | `/opt/shared/axlib` | axlib uv project and environment |
 | `--python-dir DIR` | `/opt/shared/python` | Shared uv-managed Python |
-| `--python VERSION` | `3.14` | Python version (3.11 or newer) |
+| `--python VERSION` | `3.15` | Python version (3.11 or newer) |
 | `--group NAME` | `netops` | Group allowed to use the store; created if missing |
 | `--bin-dir DIR` | `/usr/local/bin` | Where the `axlib` command is linked |
 | `--sbin-dir DIR` | `/usr/local/sbin` | Where the `axuv` command is copied |
@@ -129,7 +129,7 @@ finds the options of this one:
 ```bash
 PREFIX='/opt/shared/axlib'
 PYTHON_DIR='/opt/shared/python'
-PYTHON_VERSION='3.14'
+PYTHON_VERSION='3.15'
 GROUP='netops'
 BIN_DIR='/usr/local/bin'
 SBIN_DIR='/usr/local/sbin'
