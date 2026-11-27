@@ -2,6 +2,60 @@
 
 Newest release first. [CHANGELOG.md](CHANGELOG.md) lists every individual change.
 
+## 1.0.11
+
+### Overview
+
+axlib supports Python 3.15, and every dependency is at its newest version. `install.sh` installs Python 3.15 on a new host, and a host it already set up keeps its Python version when it upgrades. No command, API, or storage format changes.
+
+### Python 3.15
+
+- **Supported and tested.** The classifiers list Python 3.15, and CI and `make deps` run `make check` on Python 3.11 to 3.15.
+- **New hosts get Python 3.15.** It is the default of `install.sh --python`, which is recorded as `PYTHON_VERSION` in `/etc/axlib/install.env`. A host that `install.sh` set up before keeps the version recorded there when it upgrades, so the Python that `ax.getkeys()` scripts run with stays the same.
+
+### Dependencies
+
+Every dependency is at its newest version, tested with `make check` on Python 3.11, 3.12, 3.13, 3.14, and 3.15. Nothing is held.
+
+- **Runtime dependency:** `redis` 8.2.0 (was 8.1.0). `cryptography` was already at its newest version.
+- **Optional extras:** for `axlib md2html`, `markdown-it-py` 4.3.0 (was 4.2.0) and `mdit-py-plugins` 0.7.0 (was 0.6.1); for `axlib parse`, `ntc-templates` 9.4.0 (was 9.3.0) and `textfsm` 2.1.1 (was 2.1.0). `rich` and `textual` were already at their newest versions.
+- **Development tools:** `ruff` 0.17.6 (was 0.17.3) and `ty` 0.0.112 (was 0.0.93). `coverage`, `packaging`, and `platformdirs` were also upgraded in `uv.lock`.
+- A shared host that upgrades axlib also upgrades `redis`, and the Markdown and parsing packages where those parts are installed, if it has older versions.
+
+### For anyone working on axlib
+
+- **ty 0.0.112 renamed two rules**, `unresolved-attribute` to `missing-attribute` and `call-non-callable` to `not-callable`. The `ty: ignore` comments in `axlib.tf` use the new names.
+- **`make check` passes in a checkout with local notes.** `test_release_number_is_not_hard_coded_elsewhere` skips `STATUS.md`, `CLAUDE.local.md`, and `local-notes/`, which `.gitignore` keeps out of git. Before, a release number written in them failed the test.
+- **The workflows use astral-sh/setup-uv 10.4.0** (was 10.3.2).
+- **ntc-templates 9.4.0** still has every field the comparison profiles name: `tests/test_parse_profiles.py` checks each profile against the installed templates.
+
+### Compatibility
+
+- **No command, API, or storage format changes.**
+- **A shared host upgrades in place** with `sudo ./axlib-1.0.11/install.sh` or `sudo /opt/shared/axlib/current/install.sh update`, keeping its options and its Python version.
+
+### Validation
+
+Before tagging, on the development host and in GitHub Actions on the commit before this one:
+
+```text
+make deps: make check with every dependency at its newest
+  version on CPython 3.11.16, 3.12.15, 3.13.15, 3.14.3,
+  and 3.15.2:                                              570 passed on each, nothing held
+make check, locally on CPython 3.15.2 (Ruff 0.17.6,
+  ty 0.0.112, docstring audit, tests):                     570 passed
+make deps-check (the release gate):                        12 of 12 dependencies newest
+make docs (strict, no broken links):                       passed
+CI (GitHub Actions) on the commit before this one: make
+  check on CPython 3.11 to 3.15, docs, build, and the
+  installer, fresh and upgrading from 1.0.9:               passed
+The installer locally, fresh (Python 3.15) and upgrading
+  from 1.0.9 with a rollback (keeping Python 3.14):        passed
+twine check --strict of the built tarball and wheel:       passed
+```
+
+The release workflow runs every CI check again on the tag before publishing, including the installer's upgrade from 1.0.10 with a rollback, and `make deps-check`.
+
 ## 1.0.10
 
 ### Overview

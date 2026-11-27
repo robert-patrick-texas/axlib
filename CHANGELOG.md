@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.11 - 2026-11-27
 
 - axlib supports Python 3.15. It is in the classifiers, CI runs `make check` on Python 3.11 to 3.15, and `install.sh` installs Python 3.15 on a new host. A host that `install.sh` already set up keeps the Python version recorded in `/etc/axlib/install.env`.
 - `make deps` moved the runtime dependency to `redis>=8.2.0`, the optional extras to `markdown-it-py[linkify]>=4.3.0`, `mdit-py-plugins>=0.7.0`, `ntc-templates>=9.4.0`, and `textfsm>=2.1.1`, and the development tools to `ruff==0.17.6` and `ty>=0.0.112`. A shared host that upgrades axlib therefore also upgrades any of these that it has at an older version.
