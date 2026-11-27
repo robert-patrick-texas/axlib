@@ -12,3 +12,9 @@ build/
 dist/
 site/
 *.rotating
+
+# Local notes and status files a developer keeps beside the tree; never committed
+/STATUS.md
+/CLAUDE.local.md
+/local-notes/
+.claude/settings.local.json
